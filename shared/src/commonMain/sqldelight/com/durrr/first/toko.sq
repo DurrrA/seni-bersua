@@ -1,0 +1,933 @@
+-- File: toko.sq
+-- SQLDelight schema for SuCash (from APK static SQL strings)
+
+-- =========================
+-- toko_biaya_item
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_biaya_item (
+  id_biaya_item TEXT NOT NULL PRIMARY KEY,
+  nama TEXT
+);
+
+-- =========================
+-- toko_biaya_transaksi
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_biaya_transaksi (
+  id_biaya_transaksi TEXT NOT NULL PRIMARY KEY,
+
+  id_pemasok TEXT,
+  id_pembelian TEXT,
+  id_pembelian2 TEXT,
+  id_utang TEXT,
+
+  pengurang TEXT,
+  biaya TEXT,
+  c TEXT,
+
+  id_biaya_item TEXT,
+  is_delete TEXT,
+  keterangan TEXT,
+  tgl_tagihan TEXT,
+
+  FOREIGN KEY (id_biaya_item) REFERENCES toko_biaya_item(id_biaya_item),
+  FOREIGN KEY (id_pemasok) REFERENCES toko_pemasok(id_pemasok),
+  FOREIGN KEY (id_pembelian) REFERENCES toko_pembelian(id_pembelian),
+  FOREIGN KEY (id_utang) REFERENCES toko_utang(id_utang)
+);
+
+-- =========================
+-- toko_cash_flow
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_cash_flow (
+  id_cash_flow TEXT NOT NULL PRIMARY KEY,
+  id_jenis_bayar TEXT,
+  id_pembayaran TEXT,
+  id_pengeluaran TEXT,
+  FOREIGN KEY (id_jenis_bayar) REFERENCES toko_jenis_bayar(id_jenis_bayar),
+  FOREIGN KEY (id_pembayaran) REFERENCES toko_pembayaran(id_pembayaran)
+);
+
+-- =========================
+-- toko_catalog (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_catalog (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT,
+  is_delete INTEGER NOT NULL DEFAULT 0
+);
+
+-- =========================
+-- toko_group_bayar
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_group_bayar (
+  id_group_bayar TEXT NOT NULL PRIMARY KEY,
+  nama TEXT NOT NULL
+);
+
+-- =========================
+-- toko_group_item
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_group_item (
+  id_group_item TEXT NOT NULL PRIMARY KEY,
+  nama TEXT NOT NULL,
+  urutan INTEGER NOT NULL DEFAULT 0,
+  outlet_id TEXT NOT NULL DEFAULT 'default'
+);
+
+-- =========================
+-- toko_item
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_item (
+  id_item TEXT NOT NULL PRIMARY KEY,
+
+  fixed_profit TEXT,
+  harga_jual_num TEXT,
+  harga_lain TEXT,
+  is_fixed_profit TEXT,
+  is_not_aktif TEXT,
+  is_stok TEXT,
+  is_use_num TEXT,
+  jumlah_num TEXT,
+  keterangan TEXT,
+  use_poin TEXT,
+
+  harga TEXT,
+  id_group_item TEXT,
+  is_delete TEXT,
+  jenis_item TEXT,
+  kode TEXT,
+  nama TEXT,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+
+  FOREIGN KEY (id_group_item) REFERENCES toko_group_item(id_group_item)
+);
+
+-- =========================
+-- toko_item_material
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_item_material (
+  id_item TEXT NOT NULL,
+  id_material TEXT NOT NULL,
+  jumlah_material TEXT,
+  PRIMARY KEY (id_item, id_material),
+  FOREIGN KEY (id_item) REFERENCES toko_item(id_item),
+  FOREIGN KEY (id_material) REFERENCES toko_material(id_material)
+);
+
+-- =========================
+-- toko_jenis_bayar
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_jenis_bayar (
+  id_jenis_bayar TEXT NOT NULL PRIMARY KEY,
+  id_group_bayar TEXT NOT NULL,
+  nama TEXT NOT NULL,
+  FOREIGN KEY (id_group_bayar) REFERENCES toko_group_bayar(id_group_bayar)
+);
+
+-- =========================
+-- toko_log_item (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_log_item (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_log_material (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_log_material (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_log_poin (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_log_poin (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_logumum (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_logumum (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_material
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_material (
+  id_material TEXT NOT NULL PRIMARY KEY,
+  id_unit TEXT,
+  is_delete TEXT,
+  nama TEXT,
+  FOREIGN KEY (id_unit) REFERENCES toko_unit(id_unit)
+);
+
+-- =========================
+-- toko_misc (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_misc (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT,
+  is_delete INTEGER NOT NULL DEFAULT 0
+);
+
+-- =========================
+-- toko_pelanggan
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_pelanggan (
+  id_pelanggan TEXT NOT NULL PRIMARY KEY,
+  barcode TEXT,
+  diskon TEXT,
+  is_diskon TEXT,
+  poin TEXT,
+  use_poin TEXT,
+  nama TEXT
+);
+
+-- =========================
+-- toko_pemasok
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_pemasok (
+  id_pemasok TEXT NOT NULL PRIMARY KEY,
+  nama TEXT
+);
+
+-- =========================
+-- toko_pembayaran
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_pembayaran (
+  id_pembayaran TEXT NOT NULL PRIMARY KEY,
+  c_date TEXT,
+  id_retur TEXT,
+  dibayar TEXT,
+  id_jenis_bayar TEXT,
+  id_transaksi TEXT,
+  is_cancel TEXT,
+  is_delete TEXT,
+  kembalian TEXT,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+
+  FOREIGN KEY (id_jenis_bayar) REFERENCES toko_jenis_bayar(id_jenis_bayar),
+  FOREIGN KEY (id_transaksi) REFERENCES toko_transaksi(id_transaksi) ON DELETE CASCADE
+);
+
+-- =========================
+-- toko_pembelian (partial columns found; add id)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_pembelian (
+  id_pembelian TEXT NOT NULL PRIMARY KEY,
+  biaya_lain TEXT,
+  diskon TEXT,
+  pajak TEXT
+);
+
+-- =========================
+-- toko_poin
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_poin (
+  id_poin TEXT NOT NULL PRIMARY KEY,
+  nama TEXT NOT NULL,
+  poin TEXT
+);
+
+-- =========================
+-- toko_pre_text
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_pre_text (
+  jenis TEXT NOT NULL,
+  keterangan TEXT,
+  nama TEXT NOT NULL,
+  PRIMARY KEY (jenis, nama)
+);
+
+-- =========================
+-- toko_rekap_item_harian (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_rekap_item_harian (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_stok_item
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_stok_item (
+  id_stok TEXT NOT NULL PRIMARY KEY,
+  harga_beli TEXT,
+  id_item TEXT NOT NULL,
+  id_pembelian TEXT NOT NULL,
+  stok TEXT,
+  tgl_exp TEXT,
+  id_pemasok TEXT,
+
+  FOREIGN KEY (id_item) REFERENCES toko_item(id_item),
+  FOREIGN KEY (id_pembelian) REFERENCES toko_pembelian(id_pembelian),
+  FOREIGN KEY (id_pemasok) REFERENCES toko_pemasok(id_pemasok)
+);
+
+-- =========================
+-- toko_stok_material
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_stok_material (
+  id_stok_material TEXT NOT NULL PRIMARY KEY,
+  id_pembelian TEXT NOT NULL,
+  tgl_exp TEXT,
+  harga_beli TEXT,
+  id_material TEXT,
+  stok TEXT,
+
+  FOREIGN KEY (id_pembelian) REFERENCES toko_pembelian(id_pembelian),
+  FOREIGN KEY (id_material) REFERENCES toko_material(id_material)
+);
+
+-- =========================
+-- toko_teknisi
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_teknisi (
+  id_teknisi TEXT NOT NULL PRIMARY KEY,
+  nama TEXT NOT NULL
+);
+
+-- =========================
+-- toko_template_transaksi (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_template_transaksi (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_transaksi
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_transaksi (
+  id_transaksi TEXT NOT NULL PRIMARY KEY,
+
+  admin_fee TEXT,
+  delivery TEXT,
+  delivery_calc TEXT,
+  dibayar TEXT,
+  diskon_plus_jenis TEXT,
+  diskon_plus_note TEXT,
+  is_retur TEXT,
+  laba_rugi TEXT,
+  meja TEXT,
+  nama_pelanggan_bebas TEXT,
+  num_queue TEXT,
+  opsi TEXT,
+  poin TEXT,
+  round_harga TEXT,
+  service_charge TEXT,
+
+  c TEXT,
+  c_by TEXT,
+  c_date TEXT,
+  diskon_plus TEXT,
+  id_pelanggan TEXT,
+  is_cancel TEXT,
+  is_delete TEXT,
+  lu TEXT,
+  ns TEXT,
+  pajak TEXT,
+  rekap_harga_total TEXT,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+
+  FOREIGN KEY (id_pelanggan) REFERENCES toko_pelanggan(id_pelanggan),
+  FOREIGN KEY (c_by) REFERENCES toko_user(id_user)
+);
+
+-- =========================
+-- toko_transaksi_detail
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_transaksi_detail (
+  id_transaksi_detail TEXT NOT NULL PRIMARY KEY,
+
+  diskon_note TEXT,
+  diskon_num TEXT,
+  diskon_num_note TEXT,
+  harga_pokok TEXT,
+  harga_pokok_var TEXT,
+  harga_var TEXT,
+  id_stok TEXT,
+  id_unit_var TEXT,
+  internal_note TEXT,
+  internal_stat TEXT,
+  item_note TEXT,
+  jumlah_var TEXT,
+  laba_rugi TEXT,
+  material TEXT,
+  stok_var TEXT,
+
+  diskon TEXT,
+  harga TEXT,
+  id_item TEXT,
+  id_transaksi TEXT NOT NULL,
+  is_delete TEXT,
+  jenis_item TEXT,
+  jumlah TEXT,
+  nama_item TEXT,
+  rekap_harga_detail TEXT,
+
+  FOREIGN KEY (id_transaksi) REFERENCES toko_transaksi(id_transaksi) ON DELETE CASCADE,
+  FOREIGN KEY (id_item) REFERENCES toko_item(id_item),
+  FOREIGN KEY (id_stok) REFERENCES toko_stok_item(id_stok)
+);
+
+-- =========================
+-- toko_transaksi_retur (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_transaksi_retur (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_transaksi_teknisi
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_transaksi_teknisi (
+  id_teknisi TEXT,
+  id_transaksi TEXT,
+  PRIMARY KEY (id_transaksi, id_teknisi),
+  FOREIGN KEY (id_teknisi) REFERENCES toko_teknisi(id_teknisi),
+  FOREIGN KEY (id_transaksi) REFERENCES toko_transaksi(id_transaksi) ON DELETE CASCADE
+);
+
+-- =========================
+-- toko_unit
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_unit (
+  id_unit TEXT NOT NULL PRIMARY KEY,
+  is_delete TEXT,
+  nama TEXT,
+  singkatan TEXT
+);
+
+-- =========================
+-- toko_unit_konversi (unknown columns -> minimal)
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_unit_konversi (
+  id TEXT NOT NULL PRIMARY KEY,
+  payload_json TEXT,
+  created_at TEXT,
+  updated_at TEXT
+);
+
+-- =========================
+-- toko_unit_varian
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_unit_varian (
+  id_item_unit TEXT NOT NULL PRIMARY KEY,
+  harga TEXT,
+  id_item TEXT,
+  id_unit TEXT,
+  jumlah TEXT,
+  FOREIGN KEY (id_item) REFERENCES toko_item(id_item),
+  FOREIGN KEY (id_unit) REFERENCES toko_unit(id_unit)
+);
+
+-- =========================
+-- toko_user
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_user (
+  id_user TEXT NOT NULL PRIMARY KEY,
+  password TEXT NOT NULL,
+  username TEXT NOT NULL,
+  nama TEXT,
+  UNIQUE(username)
+);
+
+-- =========================
+-- toko_utang
+-- =========================
+CREATE TABLE IF NOT EXISTS toko_utang (
+  id_utang TEXT NOT NULL PRIMARY KEY,
+  id_pembelian TEXT,
+  FOREIGN KEY (id_pembelian) REFERENCES toko_pembelian(id_pembelian)
+);
+
+-- =========================
+-- order_header (local cache for orders)
+-- =========================
+CREATE TABLE IF NOT EXISTS order_header (
+  id_order TEXT NOT NULL PRIMARY KEY,
+  token TEXT,
+  status TEXT NOT NULL,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  outlet_id TEXT NOT NULL DEFAULT 'default'
+);
+
+-- =========================
+-- order_item (local cache for orders)
+-- =========================
+CREATE TABLE IF NOT EXISTS order_item (
+  id_order_item TEXT NOT NULL PRIMARY KEY,
+  id_order TEXT NOT NULL,
+  id_item TEXT,
+  nama_item TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  price INTEGER NOT NULL,
+  note TEXT,
+  FOREIGN KEY (id_order) REFERENCES order_header(id_order) ON DELETE CASCADE
+);
+
+-- =========================
+-- sync_outbox (future sync events)
+-- =========================
+CREATE TABLE IF NOT EXISTS sync_outbox (
+  id_event TEXT NOT NULL PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  sent_at TEXT,
+  outlet_id TEXT NOT NULL DEFAULT 'default'
+);
+
+-- =========================
+-- stock_item_balance
+-- =========================
+CREATE TABLE IF NOT EXISTS stock_item_balance (
+  item_id TEXT NOT NULL,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+  qty_on_hand INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (item_id, outlet_id),
+  FOREIGN KEY (item_id) REFERENCES toko_item(id_item)
+);
+
+-- =========================
+-- stock_ledger
+-- =========================
+CREATE TABLE IF NOT EXISTS stock_ledger (
+  ledger_id TEXT NOT NULL PRIMARY KEY,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+  item_id TEXT NOT NULL,
+  movement_type TEXT NOT NULL,
+  qty_delta INTEGER NOT NULL,
+  reference_type TEXT,
+  reference_id TEXT,
+  reason TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (item_id) REFERENCES toko_item(id_item)
+);
+
+-- =========================
+-- stock_threshold
+-- =========================
+CREATE TABLE IF NOT EXISTS stock_threshold (
+  item_id TEXT NOT NULL,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+  min_qty INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (item_id, outlet_id),
+  FOREIGN KEY (item_id) REFERENCES toko_item(id_item)
+);
+
+-- =========================
+-- cash_session
+-- =========================
+CREATE TABLE IF NOT EXISTS cash_session (
+  session_id TEXT NOT NULL PRIMARY KEY,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+  opened_by TEXT NOT NULL,
+  opened_at TEXT NOT NULL,
+  opening_cash INTEGER NOT NULL,
+  closed_by TEXT,
+  closed_at TEXT,
+  closing_cash_counted INTEGER,
+  expected_cash INTEGER,
+  variance INTEGER,
+  status TEXT NOT NULL
+);
+
+-- =========================
+-- cash_movement
+-- =========================
+CREATE TABLE IF NOT EXISTS cash_movement (
+  movement_id TEXT NOT NULL PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+  movement_type TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  note TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (session_id) REFERENCES cash_session(session_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_toko_transaksi_outlet_date ON toko_transaksi(outlet_id, c_date);
+CREATE INDEX IF NOT EXISTS idx_toko_order_outlet_status_date ON order_header(outlet_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_toko_pembayaran_outlet_date ON toko_pembayaran(outlet_id, c_date);
+CREATE INDEX IF NOT EXISTS idx_toko_outbox_outlet_created_sent ON sync_outbox(outlet_id, created_at, sent_at);
+CREATE INDEX IF NOT EXISTS idx_stock_balance_outlet_qty ON stock_item_balance(outlet_id, qty_on_hand);
+CREATE INDEX IF NOT EXISTS idx_stock_ledger_outlet_item_date ON stock_ledger(outlet_id, item_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_threshold_outlet_item ON stock_threshold(outlet_id, item_id);
+CREATE INDEX IF NOT EXISTS idx_cash_session_outlet_status_opened ON cash_session(outlet_id, status, opened_at);
+CREATE INDEX IF NOT EXISTS idx_cash_movement_session_type_date ON cash_movement(session_id, movement_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_cash_movement_outlet_date ON cash_movement(outlet_id, created_at);
+
+-- =========================
+-- app_settings (local app configuration)
+-- =========================
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key TEXT NOT NULL PRIMARY KEY,
+  setting_value TEXT
+);
+
+-- =========================
+-- Basic queries (minimum useful)
+-- =========================
+
+selectAllItems:
+SELECT * FROM toko_item
+WHERE outlet_id = ?
+  AND (is_delete IS NULL OR is_delete = '0');
+
+selectAllGroups:
+SELECT * FROM toko_group_item
+WHERE outlet_id = ?
+ORDER BY urutan ASC, nama ASC;
+
+selectAllJenisBayar:
+SELECT * FROM toko_jenis_bayar;
+
+upsertGroupItem:
+INSERT OR REPLACE INTO toko_group_item(id_group_item, nama, urutan, outlet_id)
+VALUES (?, ?, ?, ?);
+
+upsertItem:
+INSERT OR REPLACE INTO toko_item(
+  id_item,
+  nama,
+  harga,
+  id_group_item,
+  is_delete,
+  kode,
+  jenis_item,
+  outlet_id
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+softDeleteItem:
+UPDATE toko_item
+SET is_delete = '1'
+WHERE id_item = ?
+  AND outlet_id = ?;
+
+insertTransaksi:
+INSERT INTO toko_transaksi(
+  id_transaksi,
+  c_date,
+  meja,
+  diskon_plus,
+  pajak,
+  service_charge,
+  round_harga,
+  rekap_harga_total,
+  dibayar,
+  outlet_id,
+  is_delete,
+  is_cancel
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', '0');
+
+updateTransaksiTotals:
+UPDATE toko_transaksi
+SET rekap_harga_total = ?,
+    diskon_plus = ?,
+    pajak = ?,
+    service_charge = ?,
+    round_harga = ?,
+    dibayar = ?
+WHERE id_transaksi = ?;
+
+insertTransaksiDetail:
+INSERT INTO toko_transaksi_detail(
+  id_transaksi_detail,
+  id_transaksi,
+  id_item,
+  nama_item,
+  jumlah,
+  harga,
+  diskon,
+  rekap_harga_detail,
+  is_delete
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, '0');
+
+insertPembayaran:
+INSERT INTO toko_pembayaran(
+  id_pembayaran,
+  id_transaksi,
+  dibayar,
+  kembalian,
+  id_jenis_bayar,
+  outlet_id,
+  is_delete,
+  is_cancel,
+  c_date
+)
+VALUES (?, ?, ?, ?, ?, ?, '0', '0', ?);
+
+selectTransaksiByDate:
+SELECT * FROM toko_transaksi
+WHERE substr(c_date, 1, 10) = ?
+  AND outlet_id = ?
+  AND (is_delete IS NULL OR is_delete = '0');
+
+selectAllTransaksi:
+SELECT * FROM toko_transaksi
+WHERE outlet_id = ?
+  AND (is_delete IS NULL OR is_delete = '0');
+
+selectTransaksiById:
+SELECT * FROM toko_transaksi
+WHERE id_transaksi = ?
+  AND outlet_id = ?
+LIMIT 1;
+
+upsertOrderHeader:
+INSERT OR REPLACE INTO order_header(id_order, token, status, notes, created_at, updated_at, outlet_id)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteOrderItemsByOrder:
+DELETE FROM order_item WHERE id_order = ?;
+
+insertOrderItem:
+INSERT INTO order_item(id_order_item, id_order, id_item, nama_item, qty, price, note)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectOrdersByStatus:
+SELECT * FROM order_header
+WHERE status = ?
+  AND outlet_id = ?
+ORDER BY created_at DESC;
+
+selectAllOrders:
+SELECT * FROM order_header
+WHERE outlet_id = ?
+ORDER BY created_at DESC;
+
+selectOrderItemsByOrder:
+SELECT * FROM order_item WHERE id_order = ?;
+
+selectTransaksiDetailByTransaksi:
+SELECT * FROM toko_transaksi_detail WHERE id_transaksi = ?;
+
+selectAllTransaksiDetail:
+SELECT * FROM toko_transaksi_detail WHERE is_delete IS NULL OR is_delete = '0';
+
+selectPembayaranByTransaksi:
+SELECT * FROM toko_pembayaran
+WHERE id_transaksi = ?
+  AND outlet_id = ?
+  AND (is_delete IS NULL OR is_delete = '0')
+ORDER BY c_date DESC;
+
+selectAllPembayaran:
+SELECT * FROM toko_pembayaran
+WHERE outlet_id = ?
+  AND (is_delete IS NULL OR is_delete = '0')
+ORDER BY c_date DESC;
+
+insertOutboxEvent:
+INSERT INTO sync_outbox(id_event, event_type, payload_json, created_at, sent_at, outlet_id)
+VALUES (?, ?, ?, ?, ?, ?);
+
+selectPendingOutbox:
+SELECT * FROM sync_outbox
+WHERE sent_at IS NULL
+  AND outlet_id = ?
+ORDER BY created_at ASC;
+
+markOutboxSent:
+UPDATE sync_outbox
+SET sent_at = ?
+WHERE id_event = ?
+  AND outlet_id = ?;
+
+insertGroupItem:
+INSERT INTO toko_group_item(id_group_item, nama, urutan, outlet_id)
+VALUES (?, ?, ?, ?);
+
+selectGroupItemById:
+SELECT * FROM toko_group_item
+WHERE id_group_item = ?
+  AND outlet_id = ?;
+
+deleteGroupItem:
+DELETE FROM toko_group_item
+WHERE id_group_item = ?
+  AND outlet_id = ?;
+
+upsertStockBalance:
+INSERT OR REPLACE INTO stock_item_balance(item_id, outlet_id, qty_on_hand, updated_at)
+VALUES (?, ?, ?, ?);
+
+selectStockBalanceByItem:
+SELECT * FROM stock_item_balance
+WHERE item_id = ?
+  AND outlet_id = ?
+LIMIT 1;
+
+insertStockLedger:
+INSERT INTO stock_ledger(
+  ledger_id,
+  outlet_id,
+  item_id,
+  movement_type,
+  qty_delta,
+  reference_type,
+  reference_id,
+  reason,
+  created_by,
+  created_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertStockThreshold:
+INSERT OR REPLACE INTO stock_threshold(item_id, outlet_id, min_qty)
+VALUES (?, ?, ?);
+
+selectStockThresholdByItem:
+SELECT * FROM stock_threshold
+WHERE item_id = ?
+  AND outlet_id = ?
+LIMIT 1;
+
+selectLowStockItems:
+SELECT
+  b.item_id,
+  b.outlet_id,
+  b.qty_on_hand,
+  COALESCE(t.min_qty, 0) AS min_qty,
+  i.nama AS item_name
+FROM stock_item_balance b
+LEFT JOIN stock_threshold t
+  ON t.item_id = b.item_id
+  AND t.outlet_id = b.outlet_id
+LEFT JOIN toko_item i
+  ON i.id_item = b.item_id
+WHERE b.outlet_id = ?
+  AND b.qty_on_hand <= COALESCE(t.min_qty, 0)
+ORDER BY b.qty_on_hand ASC, i.nama ASC;
+
+selectStockHistoryByOutlet:
+SELECT * FROM stock_ledger
+WHERE outlet_id = ?
+ORDER BY created_at DESC
+LIMIT ?;
+
+selectStockHistoryByItem:
+SELECT * FROM stock_ledger
+WHERE outlet_id = ?
+  AND item_id = ?
+ORDER BY created_at DESC
+LIMIT ?;
+
+insertCashSession:
+INSERT INTO cash_session(
+  session_id,
+  outlet_id,
+  opened_by,
+  opened_at,
+  opening_cash,
+  closed_by,
+  closed_at,
+  closing_cash_counted,
+  expected_cash,
+  variance,
+  status
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectActiveCashSessionByOutlet:
+SELECT * FROM cash_session
+WHERE outlet_id = ?
+  AND status = 'OPEN'
+ORDER BY opened_at DESC
+LIMIT 1;
+
+selectCashSessionById:
+SELECT * FROM cash_session
+WHERE session_id = ?
+LIMIT 1;
+
+closeCashSession:
+UPDATE cash_session
+SET closed_by = ?,
+    closed_at = ?,
+    closing_cash_counted = ?,
+    expected_cash = ?,
+    variance = ?,
+    status = 'CLOSED'
+WHERE session_id = ?;
+
+selectCashSessionsByOutlet:
+SELECT * FROM cash_session
+WHERE outlet_id = ?
+ORDER BY opened_at DESC
+LIMIT ?;
+
+insertCashMovement:
+INSERT INTO cash_movement(
+  movement_id,
+  session_id,
+  outlet_id,
+  movement_type,
+  amount,
+  note,
+  created_by,
+  created_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectCashMovementsBySession:
+SELECT * FROM cash_movement
+WHERE session_id = ?
+ORDER BY created_at DESC;
+
+selectCashMovementsByOutlet:
+SELECT * FROM cash_movement
+WHERE outlet_id = ?
+ORDER BY created_at DESC
+LIMIT ?;
+
+upsertAppSetting:
+INSERT OR REPLACE INTO app_settings(setting_key, setting_value)
+VALUES (?, ?);
+
+createAppSettingsTable:
+CREATE TABLE IF NOT EXISTS app_settings (
+  setting_key TEXT NOT NULL PRIMARY KEY,
+  setting_value TEXT
+);
+
+selectAppSetting:
+SELECT * FROM app_settings WHERE setting_key = ?;
+
+selectAllAppSettings:
+SELECT * FROM app_settings;
