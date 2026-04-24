@@ -60,6 +60,30 @@ Run server:
 ./gradlew :server:run
 ```
 
+React webapp (Vite) source:
+
+- Location: `webapp/`
+- Build target: `server/src/main/resources/web` (served by Ktor)
+
+Build React webapp into server static files:
+
+```bash
+cd webapp
+npm install
+npm run build
+cd ..
+./gradlew :server:run
+```
+
+React dev mode (with `/api` proxy to local Ktor):
+
+```bash
+./gradlew :server:run
+# in another terminal
+cd webapp
+npm run dev
+```
+
 Optional server DB path (defaults to `data/sucash-server.db`):
 
 ```bash
