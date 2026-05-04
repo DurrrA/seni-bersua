@@ -12,6 +12,7 @@ import com.durrr.first.data.repo.MenuSyncRepository
 import com.durrr.first.data.repo.OrderCacheRepository
 import com.durrr.first.data.repo.OrderSyncRepository
 import com.durrr.first.data.repo.RecapRepository
+import com.durrr.first.data.repo.RecapSyncRepository
 import com.durrr.first.data.repo.ReceiptRepository
 import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.data.repo.StockRepository
@@ -41,6 +42,7 @@ fun rememberAppDependencies(
     val menuRepository = remember { MenuRepository(db) }
     val transaksiRepository = remember { TransaksiRepository(db) }
     val recapRepository = remember { RecapRepository(db) }
+    val recapSyncRepository = remember { RecapSyncRepository(recapRepository, apiClient) }
     val cashFlowRepository = remember { CashFlowRepository(db) }
     val stockRepository = remember { StockRepository(db) }
     val cashSessionRepository = remember { CashSessionRepository(db) }
@@ -52,7 +54,14 @@ fun rememberAppDependencies(
     val nowIso = remember { { isoFormatter.format(Date()) } }
 
     // Sync Repositories
-    val orderSyncRepository = remember { OrderSyncRepository(orderRepository, apiClient) }
+    val orderSyncRepository = remember {
+        OrderSyncRepository(
+            orderCacheRepository = orderRepository,
+            apiClient = apiClient,
+            transaksiRepository = transaksiRepository,
+            nowIso = nowIso,
+        )
+    }
     val menuSyncRepository = remember { MenuSyncRepository(menuRepository, apiClient) }
     val transaksiSyncRepository = remember {
         TransaksiSyncRepository(
@@ -68,6 +77,7 @@ fun rememberAppDependencies(
         menuRepository = menuRepository,
         transaksiRepository = transaksiRepository,
         recapRepository = recapRepository,
+        recapSyncRepository = recapSyncRepository,
         cashFlowRepository = cashFlowRepository,
         stockRepository = stockRepository,
         cashSessionRepository = cashSessionRepository,

@@ -1,6 +1,8 @@
 package com.durrr.first.data.repo
 
 import com.durrr.first.TokoDatabase
+import com.durrr.first.domain.model.OrderHeader
+import com.durrr.first.domain.model.OrderItem
 import com.durrr.first.domain.model.Pembayaran
 import com.durrr.first.domain.model.Transaksi
 import com.durrr.first.domain.model.TransaksiDetail
@@ -12,6 +14,67 @@ class TransaksiRepository(
     private val totalsCalculator: TotalsCalculator = TotalsCalculator(),
     private val stockRepository: StockRepository = StockRepository(db),
 ) {
+    fun ensureOrderRecordedAsTransaksi(
+        order: OrderHeader,
+        items: List<OrderItem>,
+        nowIso: () -> String,
+        outletId: String = order.outletId ?: SettingsRepository.DEFAULT_OUTLET_ID,
+    ): String {
+        val transaksiId = "ordtrx_${order.id}"
+        val exists = db.tokoQueries.selectTransaksiById(transaksiId, outletId).executeAsOneOrNull() != null
+        if (exists) return transaksiId
+
+        val createdAt = order.updatedAt?.takeIf { it.isNotBlank() }
+            ?: order.createdAt.takeIf { it.isNotBlank() }
+            ?: nowIso()
+        val total = items.sumOf { it.qty * it.price }
+        val paymentTypeId = resolvePaymentTypeId(order.notes)
+
+        db.transaction {
+            db.tokoQueries.insertTransaksi(
+                id_transaksi = transaksiId,
+                c = "system",
+                c_by = "system",
+                c_date = createdAt,
+                meja = order.token,
+                diskon_plus = "0",
+                pajak = "0",
+                service_charge = "0",
+                round_harga = "0",
+                rekap_harga_total = total.toString(),
+                dibayar = total.toString(),
+                outlet_id = outletId,
+            )
+
+            items.forEachIndexed { index, item ->
+                db.tokoQueries.insertTransaksiDetail(
+                    id_transaksi_detail = "ordtd_${order.id}_$index",
+                    id_transaksi = transaksiId,
+                    id_item = item.itemId,
+                    nama_item = item.itemName,
+                    jumlah = item.qty.toString(),
+                    harga = item.price.toString(),
+                    diskon = "0",
+                    rekap_harga_detail = (item.qty * item.price).toString(),
+                )
+            }
+
+            if (paymentTypeId != null) {
+                db.tokoQueries.insertPembayaran(
+                    id_pembayaran = "ordpay_${order.id}",
+                    id_transaksi = transaksiId,
+                    dibayar = total.toString(),
+                    kembalian = "0",
+                    id_jenis_bayar = paymentTypeId,
+                    outlet_id = outletId,
+                    c_date = createdAt,
+                )
+            }
+        }
+
+        return transaksiId
+    }
+
     fun createDraftTransaksi(
         mejaTokenOrLabel: String?,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
@@ -20,6 +83,8 @@ class TransaksiRepository(
             id = IdGenerator.newId("trx_"),
             createdAt = "",
             meja = mejaTokenOrLabel,
+            cashierId = null,
+            cashierName = null,
             discountPlus = 0L,
             tax = 0L,
             serviceCharge = 0L,
@@ -115,6 +180,8 @@ class TransaksiRepository(
         val outletId = transaksi.outletId ?: SettingsRepository.DEFAULT_OUTLET_ID
         db.tokoQueries.insertTransaksi(
             id_transaksi = transaksi.id,
+            c = transaksi.cashierName,
+            c_by = transaksi.cashierId,
             c_date = transaksi.createdAt,
             meja = transaksi.meja,
             diskon_plus = transaksi.discountPlus.toString(),
@@ -149,6 +216,8 @@ class TransaksiRepository(
         tax: Long = 0,
         serviceCharge: Long = 0,
         rounding: Long = 0,
+        cashierId: String? = null,
+        cashierName: String? = null,
         allowNegativeStock: Boolean = true,
     ): TotalsCalculator.Result {
         val totals = totalsCalculator.calculate(
@@ -186,7 +255,7 @@ class TransaksiRepository(
                 outletId = outletId,
                 lines = details,
                 createdAt = pembayaran.paidAt,
-                createdBy = "cashier",
+                createdBy = cashierName ?: cashierId ?: "cashier",
                 allowNegativeStock = allowNegativeStock,
             )
         }
@@ -195,4 +264,27 @@ class TransaksiRepository(
     }
 
     private fun parseLong(value: String?): Long = value?.toLongOrNull() ?: 0L
+
+    private fun resolvePaymentTypeId(notes: String?): String? {
+        val hint = notes
+            ?.split("|")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.startsWith("Payment:", ignoreCase = true) }
+            ?.substringAfter(":", "")
+            ?.trim()
+            ?.lowercase()
+            .orEmpty()
+        val methods = db.tokoQueries.selectAllJenisBayar().executeAsList()
+        if (methods.isEmpty()) return null
+        val match = when {
+            "qris" in hint -> methods.firstOrNull {
+                it.id_jenis_bayar.contains("qris", ignoreCase = true) || it.nama.contains("qris", ignoreCase = true)
+            }
+            "cash" in hint || "cashier" in hint -> methods.firstOrNull {
+                it.id_jenis_bayar.contains("cash", ignoreCase = true) || it.nama.contains("cash", ignoreCase = true)
+            }
+            else -> null
+        }
+        return match?.id_jenis_bayar ?: methods.firstOrNull()?.id_jenis_bayar
+    }
 }

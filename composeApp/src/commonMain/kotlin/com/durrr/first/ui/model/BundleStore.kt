@@ -1,7 +1,7 @@
 package com.durrr.first.ui.model
 
-import androidx.compose.runtime.mutableStateListOf
+import com.durrr.first.features.product.data.BundleStore as FeatureBundleStore
 
 object BundleStore {
-    val bundles = mutableStateListOf<BundleDraft>()
+    val bundles = FeatureBundleStore.bundles
 }

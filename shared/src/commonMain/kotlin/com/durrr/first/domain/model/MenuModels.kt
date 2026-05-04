@@ -17,6 +17,30 @@ data class Item(
     val outletId: String? = null,
 )
 
+data class ModifierGroup(
+    val id: String,
+    val name: String,
+    val selectionType: String,
+    val isRequired: Boolean,
+    val maxSelection: Int,
+    val outletId: String? = null,
+)
+
+data class ModifierOption(
+    val id: String,
+    val groupId: String,
+    val name: String,
+    val priceDelta: Long,
+    val order: Int,
+    val isDefault: Boolean,
+    val outletId: String? = null,
+)
+
+data class ModifierGroupBundle(
+    val group: ModifierGroup,
+    val options: List<ModifierOption>,
+)
+
 data class Unit(
     val id: String,
     val name: String?,

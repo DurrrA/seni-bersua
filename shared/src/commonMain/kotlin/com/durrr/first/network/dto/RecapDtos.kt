@@ -15,6 +15,7 @@ enum class RecapRangeDto {
     TODAY,
     WEEK,
     MONTH,
+    ALL,
 }
 
 @Serializable

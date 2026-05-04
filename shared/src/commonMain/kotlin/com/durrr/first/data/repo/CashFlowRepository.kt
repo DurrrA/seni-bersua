@@ -73,6 +73,7 @@ class CashFlowRepository(private val db: TokoDatabase) {
             RecapRange.TODAY -> date == anchorDate
             RecapRange.MONTH -> date.take(7) == anchorDate.take(7)
             RecapRange.WEEK -> date in weekDates
+            RecapRange.ALL -> true
         }
     }
 

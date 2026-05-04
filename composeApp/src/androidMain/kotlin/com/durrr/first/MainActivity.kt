@@ -11,8 +11,13 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.durrr.first.features.setup.presentation.LocalFirstSetupScreen
 import com.durrr.first.ui.design.AppTheme
 import java.io.File
 
@@ -86,12 +91,29 @@ private fun AndroidAppContent(
         launchScanner = onLaunchScanner,
         pickImage = onPickImage,
     )
+    var localSetupComplete by remember {
+        mutableStateOf(dependencies.settingsRepository.isLocalSetupComplete())
+    }
     AppTheme {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = androidx.compose.material3.MaterialTheme.colorScheme.background
         ) {
-            AndroidAppScaffold(dependencies = dependencies, viewModel = viewModel)
+            if (!localSetupComplete) {
+                LocalFirstSetupScreen(
+                    settingsRepository = dependencies.settingsRepository,
+                    menuRepository = dependencies.menuRepository,
+                    cashSessionRepository = dependencies.cashSessionRepository,
+                    nowIso = dependencies.nowIso,
+                    onComplete = { localSetupComplete = true },
+                )
+            } else {
+                AndroidAppScaffold(
+                    dependencies = dependencies,
+                    viewModel = viewModel,
+                    onRequireLocalSetup = { localSetupComplete = false },
+                )
+            }
         }
     }
 }

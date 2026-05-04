@@ -19,6 +19,8 @@ class ReceiptRepository(private val db: TokoDatabase) {
             id = transaksiRow.id_transaksi,
             createdAt = transaksiRow.c_date ?: "",
             meja = transaksiRow.meja,
+            cashierId = transaksiRow.c_by,
+            cashierName = transaksiRow.c,
             discountPlus = parseLong(transaksiRow.diskon_plus),
             tax = parseLong(transaksiRow.pajak),
             serviceCharge = parseLong(transaksiRow.service_charge),

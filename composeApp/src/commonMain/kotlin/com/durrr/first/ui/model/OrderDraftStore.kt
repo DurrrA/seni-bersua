@@ -1,28 +1,20 @@
 package com.durrr.first.ui.model
 
-data class OrderDraftLine(
-    val itemId: String?,
-    val itemName: String,
-    val qty: Long,
-    val price: Long,
-)
+import com.durrr.first.features.cart.domain.OrderDraft as FeatureOrderDraft
+import com.durrr.first.features.cart.domain.OrderDraftLine as FeatureOrderDraftLine
+import com.durrr.first.features.cart.domain.OrderDraftStore as FeatureOrderDraftStore
 
-data class OrderDraft(
-    val id: String,
-    val tableToken: String?,
-    val lines: List<OrderDraftLine>,
-)
+typealias OrderDraft = FeatureOrderDraft
+typealias OrderDraftLine = FeatureOrderDraftLine
 
 object OrderDraftStore {
-    private val drafts = linkedMapOf<String, OrderDraft>()
-
     fun putDraft(draft: OrderDraft) {
-        drafts[draft.id] = draft
+        FeatureOrderDraftStore.putDraft(draft)
     }
 
-    fun getDraft(id: String): OrderDraft? = drafts[id]
+    fun getDraft(id: String): OrderDraft? = FeatureOrderDraftStore.getDraft(id)
 
     fun removeDraft(id: String) {
-        drafts.remove(id)
+        FeatureOrderDraftStore.removeDraft(id)
     }
 }

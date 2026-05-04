@@ -76,6 +76,35 @@ CREATE TABLE IF NOT EXISTS toko_group_item (
   outlet_id TEXT NOT NULL DEFAULT 'default'
 );
 
+CREATE TABLE IF NOT EXISTS modifier_group (
+  id_modifier_group TEXT NOT NULL PRIMARY KEY,
+  nama TEXT NOT NULL,
+  selection_type TEXT NOT NULL DEFAULT 'SINGLE',
+  is_required INTEGER NOT NULL DEFAULT 0,
+  max_selection INTEGER NOT NULL DEFAULT 1,
+  outlet_id TEXT NOT NULL DEFAULT 'default'
+);
+
+CREATE TABLE IF NOT EXISTS modifier_option (
+  id_modifier_option TEXT NOT NULL PRIMARY KEY,
+  id_modifier_group TEXT NOT NULL,
+  nama TEXT NOT NULL,
+  price_delta INTEGER NOT NULL DEFAULT 0,
+  urutan INTEGER NOT NULL DEFAULT 0,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+  FOREIGN KEY (id_modifier_group) REFERENCES modifier_group(id_modifier_group) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS product_modifier_group (
+  id_item TEXT NOT NULL,
+  id_modifier_group TEXT NOT NULL,
+  outlet_id TEXT NOT NULL DEFAULT 'default',
+  PRIMARY KEY (id_item, id_modifier_group, outlet_id),
+  FOREIGN KEY (id_item) REFERENCES toko_item(id_item) ON DELETE CASCADE,
+  FOREIGN KEY (id_modifier_group) REFERENCES modifier_group(id_modifier_group) ON DELETE CASCADE
+);
+
 -- =========================
 -- toko_item
 -- =========================
@@ -588,6 +617,9 @@ CREATE INDEX IF NOT EXISTS idx_stock_threshold_outlet_item ON stock_threshold(ou
 CREATE INDEX IF NOT EXISTS idx_cash_session_outlet_status_opened ON cash_session(outlet_id, status, opened_at);
 CREATE INDEX IF NOT EXISTS idx_cash_movement_session_type_date ON cash_movement(session_id, movement_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_cash_movement_outlet_date ON cash_movement(outlet_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_modifier_group_outlet_name ON modifier_group(outlet_id, nama);
+CREATE INDEX IF NOT EXISTS idx_modifier_option_group_order ON modifier_option(id_modifier_group, outlet_id, urutan);
+CREATE INDEX IF NOT EXISTS idx_product_modifier_item_outlet ON product_modifier_group(id_item, outlet_id);
 
 -- =========================
 -- app_settings (local app configuration)
@@ -640,6 +672,8 @@ WHERE id_item = ?
 insertTransaksi:
 INSERT INTO toko_transaksi(
   id_transaksi,
+  c,
+  c_by,
   c_date,
   meja,
   diskon_plus,
@@ -652,7 +686,7 @@ INSERT INTO toko_transaksi(
   is_delete,
   is_cancel
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', '0');
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', '0');
 
 updateTransaksiTotals:
 UPDATE toko_transaksi
@@ -782,6 +816,70 @@ deleteGroupItem:
 DELETE FROM toko_group_item
 WHERE id_group_item = ?
   AND outlet_id = ?;
+
+selectAllModifierGroups:
+SELECT * FROM modifier_group
+WHERE outlet_id = ?
+ORDER BY nama ASC;
+
+selectModifierOptionsByGroup:
+SELECT * FROM modifier_option
+WHERE id_modifier_group = ?
+  AND outlet_id = ?
+ORDER BY urutan ASC, nama ASC;
+
+selectModifierGroupLinksByItem:
+SELECT id_modifier_group
+FROM product_modifier_group
+WHERE id_item = ?
+  AND outlet_id = ?;
+
+upsertModifierGroup:
+INSERT OR REPLACE INTO modifier_group(
+  id_modifier_group,
+  nama,
+  selection_type,
+  is_required,
+  max_selection,
+  outlet_id
+)
+VALUES (?, ?, ?, ?, ?, ?);
+
+insertModifierOption:
+INSERT OR REPLACE INTO modifier_option(
+  id_modifier_option,
+  id_modifier_group,
+  nama,
+  price_delta,
+  urutan,
+  is_default,
+  outlet_id
+)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteModifierGroup:
+DELETE FROM modifier_group
+WHERE id_modifier_group = ?
+  AND outlet_id = ?;
+
+deleteModifierOptionsByGroup:
+DELETE FROM modifier_option
+WHERE id_modifier_group = ?
+  AND outlet_id = ?;
+
+deleteProductModifierLinksByGroup:
+DELETE FROM product_modifier_group
+WHERE id_modifier_group = ?
+  AND outlet_id = ?;
+
+deleteProductModifierLinksByItem:
+DELETE FROM product_modifier_group
+WHERE id_item = ?
+  AND outlet_id = ?;
+
+insertProductModifierLink:
+INSERT OR REPLACE INTO product_modifier_group(id_item, id_modifier_group, outlet_id)
+VALUES (?, ?, ?);
 
 upsertStockBalance:
 INSERT OR REPLACE INTO stock_item_balance(item_id, outlet_id, qty_on_hand, updated_at)
@@ -931,3 +1029,74 @@ SELECT * FROM app_settings WHERE setting_key = ?;
 
 selectAllAppSettings:
 SELECT * FROM app_settings;
+
+deleteOrderItemsByOutlet:
+DELETE FROM order_item
+WHERE id_order IN (
+  SELECT id_order FROM order_header WHERE outlet_id = ?
+);
+
+deleteOrderHeadersByOutlet:
+DELETE FROM order_header
+WHERE outlet_id = ?;
+
+deleteTransaksiDetailsByOutlet:
+DELETE FROM toko_transaksi_detail
+WHERE id_transaksi IN (
+  SELECT id_transaksi FROM toko_transaksi WHERE outlet_id = ?
+);
+
+deletePembayaranByOutlet:
+DELETE FROM toko_pembayaran
+WHERE outlet_id = ?;
+
+deleteTransaksiByOutlet:
+DELETE FROM toko_transaksi
+WHERE outlet_id = ?;
+
+deleteProductModifierLinksByOutlet:
+DELETE FROM product_modifier_group
+WHERE outlet_id = ?;
+
+deleteModifierOptionsByOutlet:
+DELETE FROM modifier_option
+WHERE outlet_id = ?;
+
+deleteModifierGroupsByOutlet:
+DELETE FROM modifier_group
+WHERE outlet_id = ?;
+
+deleteItemsByOutlet:
+DELETE FROM toko_item
+WHERE outlet_id = ?;
+
+deleteGroupsByOutlet:
+DELETE FROM toko_group_item
+WHERE outlet_id = ?;
+
+deleteOutboxByOutlet:
+DELETE FROM sync_outbox
+WHERE outlet_id = ?;
+
+deleteStockLedgerByOutlet:
+DELETE FROM stock_ledger
+WHERE outlet_id = ?;
+
+deleteStockThresholdByOutlet:
+DELETE FROM stock_threshold
+WHERE outlet_id = ?;
+
+deleteStockBalanceByOutlet:
+DELETE FROM stock_item_balance
+WHERE outlet_id = ?;
+
+deleteCashMovementsByOutlet:
+DELETE FROM cash_movement
+WHERE outlet_id = ?;
+
+deleteCashSessionsByOutlet:
+DELETE FROM cash_session
+WHERE outlet_id = ?;
+
+deleteAllAppSettings:
+DELETE FROM app_settings;

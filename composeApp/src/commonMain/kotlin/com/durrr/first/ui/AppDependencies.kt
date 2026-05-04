@@ -7,6 +7,7 @@ import com.durrr.first.data.repo.OrderSyncRepository
 import com.durrr.first.data.repo.MenuSyncRepository
 import com.durrr.first.data.repo.RecapRepository
 import com.durrr.first.data.repo.ReceiptRepository
+import com.durrr.first.data.repo.RecapSyncRepository
 import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.data.repo.StockRepository
 import com.durrr.first.data.repo.CashSessionRepository
@@ -21,6 +22,7 @@ class AppDependencies(
     val stockRepository: StockRepository,
     val cashSessionRepository: CashSessionRepository,
     val receiptRepository: ReceiptRepository,
+    val recapSyncRepository: RecapSyncRepository,
     val settingsRepository: SettingsRepository,
     val orderCacheRepository: OrderCacheRepository,
     val orderSyncRepository: OrderSyncRepository,

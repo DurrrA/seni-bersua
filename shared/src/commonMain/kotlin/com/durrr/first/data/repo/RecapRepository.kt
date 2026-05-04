@@ -7,6 +7,7 @@ import com.durrr.first.domain.model.ProductRecap
 import com.durrr.first.domain.model.RecapChartPoint
 import com.durrr.first.domain.model.RecapDashboard
 import com.durrr.first.domain.model.RecapMetrics
+import com.durrr.first.domain.model.RecapProductRecommendationPolicy
 import com.durrr.first.domain.model.RecapRange
 
 class RecapRepository(private val db: TokoDatabase) {
@@ -14,6 +15,7 @@ class RecapRepository(private val db: TokoDatabase) {
         date: String,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
     ): DailyRecap {
+        migrateCompletedOrdersToTransaksi(outletId)
         val transaksi = db.tokoQueries.selectTransaksiByDate(date, outletId).executeAsList()
         val grossTotal = transaksi.sumOf { it.rekap_harga_total?.toLongOrNull() ?: 0L }
         return DailyRecap(
@@ -28,6 +30,7 @@ class RecapRepository(private val db: TokoDatabase) {
         anchorDate: String,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
     ): RecapDashboard {
+        migrateCompletedOrdersToTransaksi(outletId)
         val transaksi = filteredTransaksi(range, anchorDate, outletId)
         val transaksiIds = transaksi.map { it.id_transaksi }.toSet()
         val details = filteredDetailsForTransaksiIds(transaksiIds)
@@ -55,8 +58,13 @@ class RecapRepository(private val db: TokoDatabase) {
             .sortedWith(compareBy<ProductRecap> { it.qty }.thenBy { it.revenue })
             .take(5)
         val paymentBreakdown = aggregatePaymentMethods(payments, methodNames)
-        val best = topProducts.firstOrNull()
-        val lowest = slowProducts.firstOrNull()
+        val best = RecapProductRecommendationPolicy.selectTopSeller(totalTransactions, topProducts)
+        val lowest = RecapProductRecommendationPolicy.selectNeedsAttention(totalTransactions, slowProducts)
+        val productInsight = RecapProductRecommendationPolicy.buildInsight(
+            totalTransactions = totalTransactions,
+            topSeller = best,
+            needsAttention = lowest,
+        )
 
         return RecapDashboard(
             range = range,
@@ -64,6 +72,7 @@ class RecapRepository(private val db: TokoDatabase) {
             chart = chart,
             bestProduct = best,
             lowestProduct = lowest,
+            productInsight = productInsight,
             paymentBreakdown = paymentBreakdown,
             topProducts = topProducts,
             slowProducts = slowProducts,
@@ -76,6 +85,7 @@ class RecapRepository(private val db: TokoDatabase) {
         limit: Int = 5,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
     ): List<ProductRecap> {
+        migrateCompletedOrdersToTransaksi(outletId)
         val transaksi = filteredTransaksi(range, anchorDate, outletId)
         val details = filteredDetailsForTransaksiIds(transaksi.map { it.id_transaksi }.toSet())
         return aggregateProducts(details)
@@ -89,6 +99,7 @@ class RecapRepository(private val db: TokoDatabase) {
         limit: Int = 5,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
     ): List<ProductRecap> {
+        migrateCompletedOrdersToTransaksi(outletId)
         val transaksi = filteredTransaksi(range, anchorDate, outletId)
         val details = filteredDetailsForTransaksiIds(transaksi.map { it.id_transaksi }.toSet())
         return aggregateProducts(details)
@@ -119,6 +130,7 @@ class RecapRepository(private val db: TokoDatabase) {
                     .toSet()
                 all.filter { extractDate(it.c_date) in dayKeys }
             }
+            RecapRange.ALL -> all
         }
     }
 
@@ -136,10 +148,7 @@ class RecapRepository(private val db: TokoDatabase) {
             .filter { payment -> payment.id_transaksi != null && payment.id_transaksi in ids }
     }
 
-    private fun buildChart(
-        range: RecapRange,
-        transaksi: List<com.durrr.first.Toko_transaksi>,
-    ): List<RecapChartPoint> {
+    private fun buildChart(range: RecapRange, transaksi: List<com.durrr.first.Toko_transaksi>): List<RecapChartPoint> {
         return when (range) {
             RecapRange.TODAY -> transaksi
                 .groupBy { extractHour(it.c_date) }
@@ -169,6 +178,16 @@ class RecapRepository(private val db: TokoDatabase) {
                     val date = entry.key
                     val rows = entry.value
                     RecapChartPoint(label = date.takeLast(2), total = rows.sumOf { parseLong(it.rekap_harga_total) })
+                }
+
+            RecapRange.ALL -> transaksi
+                .groupBy { extractDate(it.c_date).take(7) }
+                .entries
+                .sortedBy { it.key }
+                .map { entry ->
+                    val month = entry.key
+                    val rows = entry.value
+                    RecapChartPoint(label = month, total = rows.sumOf { parseLong(it.rekap_harga_total) })
                 }
         }
     }
@@ -214,4 +233,67 @@ class RecapRepository(private val db: TokoDatabase) {
     }
 
     private fun parseLong(value: String?): Long = value?.toLongOrNull() ?: 0L
+
+    private fun migrateCompletedOrdersToTransaksi(outletId: String) {
+        val completed = db.tokoQueries.selectAllOrders(outletId).executeAsList()
+            .filter { it.status.equals("DONE", ignoreCase = true) }
+        if (completed.isEmpty()) return
+
+        val methodIds = db.tokoQueries.selectAllJenisBayar().executeAsList()
+        val cashMethodId = methodIds.firstOrNull {
+            it.id_jenis_bayar.contains("cash", ignoreCase = true) || it.nama.contains("cash", ignoreCase = true)
+        }?.id_jenis_bayar ?: methodIds.firstOrNull()?.id_jenis_bayar
+
+        db.transaction {
+            completed.forEach { order ->
+                val transaksiId = "ordtrx_${order.id_order}"
+                val exists = db.tokoQueries.selectTransaksiById(transaksiId, outletId).executeAsOneOrNull() != null
+                if (exists) return@forEach
+
+                val items = db.tokoQueries.selectOrderItemsByOrder(order.id_order).executeAsList()
+                val createdAt = order.updated_at?.takeIf { it.isNotBlank() } ?: order.created_at
+                val total = items.sumOf { it.qty * it.price }
+
+                db.tokoQueries.insertTransaksi(
+                    id_transaksi = transaksiId,
+                    c = "System",
+                    c_by = "system",
+                    c_date = createdAt,
+                    meja = order.token,
+                    diskon_plus = "0",
+                    pajak = "0",
+                    service_charge = "0",
+                    round_harga = "0",
+                    rekap_harga_total = total.toString(),
+                    dibayar = total.toString(),
+                    outlet_id = outletId,
+                )
+
+                items.forEachIndexed { index, item ->
+                    db.tokoQueries.insertTransaksiDetail(
+                        id_transaksi_detail = "ordtd_${order.id_order}_$index",
+                        id_transaksi = transaksiId,
+                        id_item = item.id_item,
+                        nama_item = item.nama_item,
+                        jumlah = item.qty.toString(),
+                        harga = item.price.toString(),
+                        diskon = "0",
+                        rekap_harga_detail = (item.qty * item.price).toString(),
+                    )
+                }
+
+                if (cashMethodId != null) {
+                    db.tokoQueries.insertPembayaran(
+                        id_pembayaran = "ordpay_${order.id_order}",
+                        id_transaksi = transaksiId,
+                        dibayar = total.toString(),
+                        kembalian = "0",
+                        id_jenis_bayar = cashMethodId,
+                        outlet_id = outletId,
+                        c_date = createdAt,
+                    )
+                }
+            }
+        }
+    }
 }

@@ -11,6 +11,8 @@ import kotlin.math.max
 class OrderSyncRepository(
     private val orderCacheRepository: OrderCacheRepository,
     private val apiClient: ServerApiClient,
+    private val transaksiRepository: TransaksiRepository? = null,
+    private val nowIso: () -> String = { "" },
 ) {
     suspend fun pullOrders(baseUrl: String, outletId: String? = null): Int {
         val remoteOrders = apiClient.fetchOrders(
@@ -72,6 +74,14 @@ class OrderSyncRepository(
             items = items,
             outletId = order.outletId ?: SettingsRepository.DEFAULT_OUTLET_ID,
         )
+        if (header.status == OrderStatus.DONE) {
+            transaksiRepository?.ensureOrderRecordedAsTransaksi(
+                order = header,
+                items = items,
+                nowIso = nowIso,
+                outletId = order.outletId ?: SettingsRepository.DEFAULT_OUTLET_ID,
+            )
+        }
     }
 
     private fun mapStatus(status: String): OrderStatus {

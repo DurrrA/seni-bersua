@@ -25,6 +25,8 @@ object DatabaseProvider {
             "ALTER TABLE toko_group_item ADD COLUMN outlet_id TEXT NOT NULL DEFAULT 'default'",
             "ALTER TABLE toko_item ADD COLUMN outlet_id TEXT NOT NULL DEFAULT 'default'",
             "ALTER TABLE toko_transaksi ADD COLUMN outlet_id TEXT NOT NULL DEFAULT 'default'",
+            "ALTER TABLE toko_transaksi ADD COLUMN c TEXT",
+            "ALTER TABLE toko_transaksi ADD COLUMN c_by TEXT",
             "ALTER TABLE toko_pembayaran ADD COLUMN outlet_id TEXT NOT NULL DEFAULT 'default'",
             "ALTER TABLE order_header ADD COLUMN outlet_id TEXT NOT NULL DEFAULT 'default'",
             "ALTER TABLE sync_outbox ADD COLUMN outlet_id TEXT NOT NULL DEFAULT 'default'",
@@ -33,6 +35,9 @@ object DatabaseProvider {
             "CREATE TABLE IF NOT EXISTS stock_threshold (item_id TEXT NOT NULL, outlet_id TEXT NOT NULL DEFAULT 'default', min_qty INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (item_id, outlet_id), FOREIGN KEY (item_id) REFERENCES toko_item(id_item))",
             "CREATE TABLE IF NOT EXISTS cash_session (session_id TEXT NOT NULL PRIMARY KEY, outlet_id TEXT NOT NULL DEFAULT 'default', opened_by TEXT NOT NULL, opened_at TEXT NOT NULL, opening_cash INTEGER NOT NULL, closed_by TEXT, closed_at TEXT, closing_cash_counted INTEGER, expected_cash INTEGER, variance INTEGER, status TEXT NOT NULL)",
             "CREATE TABLE IF NOT EXISTS cash_movement (movement_id TEXT NOT NULL PRIMARY KEY, session_id TEXT NOT NULL, outlet_id TEXT NOT NULL DEFAULT 'default', movement_type TEXT NOT NULL, amount INTEGER NOT NULL, note TEXT, created_by TEXT, created_at TEXT NOT NULL, FOREIGN KEY (session_id) REFERENCES cash_session(session_id) ON DELETE CASCADE)",
+            "CREATE TABLE IF NOT EXISTS modifier_group (id_modifier_group TEXT NOT NULL PRIMARY KEY, nama TEXT NOT NULL, selection_type TEXT NOT NULL DEFAULT 'SINGLE', is_required INTEGER NOT NULL DEFAULT 0, max_selection INTEGER NOT NULL DEFAULT 1, outlet_id TEXT NOT NULL DEFAULT 'default')",
+            "CREATE TABLE IF NOT EXISTS modifier_option (id_modifier_option TEXT NOT NULL PRIMARY KEY, id_modifier_group TEXT NOT NULL, nama TEXT NOT NULL, price_delta INTEGER NOT NULL DEFAULT 0, urutan INTEGER NOT NULL DEFAULT 0, is_default INTEGER NOT NULL DEFAULT 0, outlet_id TEXT NOT NULL DEFAULT 'default', FOREIGN KEY (id_modifier_group) REFERENCES modifier_group(id_modifier_group) ON DELETE CASCADE)",
+            "CREATE TABLE IF NOT EXISTS product_modifier_group (id_item TEXT NOT NULL, id_modifier_group TEXT NOT NULL, outlet_id TEXT NOT NULL DEFAULT 'default', PRIMARY KEY (id_item, id_modifier_group, outlet_id), FOREIGN KEY (id_item) REFERENCES toko_item(id_item) ON DELETE CASCADE, FOREIGN KEY (id_modifier_group) REFERENCES modifier_group(id_modifier_group) ON DELETE CASCADE)",
             "ALTER TABLE cash_session ADD COLUMN outlet_id TEXT NOT NULL DEFAULT 'default'",
             "ALTER TABLE cash_session ADD COLUMN opened_by TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE cash_session ADD COLUMN opened_at TEXT NOT NULL DEFAULT ''",
@@ -60,6 +65,9 @@ object DatabaseProvider {
             "CREATE INDEX IF NOT EXISTS idx_cash_session_outlet_status_opened ON cash_session(outlet_id, status, opened_at)",
             "CREATE INDEX IF NOT EXISTS idx_cash_movement_session_type_date ON cash_movement(session_id, movement_type, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_cash_movement_outlet_date ON cash_movement(outlet_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_modifier_group_outlet_name ON modifier_group(outlet_id, nama)",
+            "CREATE INDEX IF NOT EXISTS idx_modifier_option_group_order ON modifier_option(id_modifier_group, outlet_id, urutan)",
+            "CREATE INDEX IF NOT EXISTS idx_product_modifier_item_outlet ON product_modifier_group(id_item, outlet_id)",
         )
         statements.forEach { sql ->
             runCatching {

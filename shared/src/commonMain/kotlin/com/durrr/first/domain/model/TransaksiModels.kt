@@ -4,6 +4,8 @@ data class Transaksi(
     val id: String,
     val createdAt: String,
     val meja: String?,
+    val cashierId: String? = null,
+    val cashierName: String? = null,
     val discountPlus: Long,
     val tax: Long,
     val serviceCharge: Long,

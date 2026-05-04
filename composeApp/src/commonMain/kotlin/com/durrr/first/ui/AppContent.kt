@@ -5,6 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import com.durrr.first.features.home.presentation.HomeScreen
+import com.durrr.first.features.orders.presentation.OrdersScreen
+import com.durrr.first.features.pos.presentation.PosScreen
+import com.durrr.first.features.product.presentation.ProductScreen
+import com.durrr.first.features.recap.presentation.RecapScreen
+import com.durrr.first.features.settings.presentation.SettingsScreen
 
 enum class AppScreen {
     HOME,
@@ -21,7 +27,7 @@ fun AppContent(dependencies: AppDependencies) {
 
     when (screen) {
         AppScreen.HOME -> HomeScreen(onNavigate = { screen = it })
-        AppScreen.MENU -> MenuScreen(
+        AppScreen.MENU -> ProductScreen(
             repo = dependencies.menuRepository,
             settingsRepository = dependencies.settingsRepository,
             menuSyncRepository = dependencies.menuSyncRepository,
@@ -39,6 +45,8 @@ fun AppContent(dependencies: AppDependencies) {
         )
         AppScreen.RECAP -> RecapScreen(
             recapRepository = dependencies.recapRepository,
+            cashFlowRepository = dependencies.cashFlowRepository,
+            recapSyncRepository = dependencies.recapSyncRepository,
             settingsRepository = dependencies.settingsRepository,
             todayDate = dependencies.todayDate,
         )

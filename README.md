@@ -8,6 +8,7 @@ Kotlin Multiplatform project with 3 modules:
 
 ## Android App Screens
 
+- `Mobile First Setup`: first-run local initialization for store info, pricing defaults, starter categories, and optional opening cash session
 - `Orders`: local cached incoming orders with status workflow `Accept -> Cooking -> Served -> Done`
 - `New Order`: walk-in order builder (optional table token, menu pick, cart)
 - `Checkout`: cash checkout for the current draft order
@@ -51,8 +52,10 @@ Main keys:
 - `SUCASH_SERVER_HOST` (default `0.0.0.0`)
 - `SUCASH_SERVER_PORT` (default `8080`)
 - `SUCASH_SERVER_DB_PATH` (default `data/sucash-server.db`)
-- `TURSO_DATABASE_URL` (prepared for Turso integration)
-- `TURSO_AUTH_TOKEN` (prepared for Turso integration, keep secret)
+- `TURSO_DATABASE_URL` (when set, server uses Turso/libSQL as primary DB)
+- `TURSO_AUTH_TOKEN` (required for protected Turso DB, keep secret)
+- `SUCASH_MIGRATE_LOCAL_SQLITE_TO_TURSO` (optional one-time bootstrap copy; `true/false`)
+- `SUCASH_MIGRATION_SOURCE_DB_PATH` (optional source sqlite path for bootstrap copy)
 
 Run server:
 
@@ -63,15 +66,22 @@ Run server:
 React webapp (Vite) source:
 
 - Location: `webapp/`
-- Build target: `server/src/main/resources/web` (served by Ktor)
+- Build target: `webapp/dist` (served by Ktor at `/web/*`)
 
-Build React webapp into server static files:
+Build React webapp:
 
 ```bash
 cd webapp
 npm install
 npm run build
 cd ..
+./gradlew :server:run
+```
+
+Optional custom dist path:
+
+```bash
+export SUCASH_WEBAPP_DIST=/absolute/path/to/webapp/dist
 ./gradlew :server:run
 ```
 
@@ -90,6 +100,26 @@ Optional server DB path (defaults to `data/sucash-server.db`):
 export SUCASH_SERVER_DB_PATH=/absolute/path/to/sucash-server.db
 ./gradlew :server:run
 ```
+
+Use Turso as server database:
+
+```bash
+export TURSO_DATABASE_URL=libsql://your-db-name-organization.turso.io
+export TURSO_AUTH_TOKEN=your_token
+./gradlew :server:run
+```
+
+Optional one-time bootstrap (copy existing local SQLite data into empty Turso DB):
+
+```bash
+export TURSO_DATABASE_URL=libsql://your-db-name-organization.turso.io
+export TURSO_AUTH_TOKEN=your_token
+export SUCASH_MIGRATE_LOCAL_SQLITE_TO_TURSO=true
+export SUCASH_MIGRATION_SOURCE_DB_PATH=/absolute/path/to/old/sucash-server.db
+./gradlew :server:run
+```
+
+After successful bootstrap, set `SUCASH_MIGRATE_LOCAL_SQLITE_TO_TURSO=false` again.
 
 Server config precedence:
 
@@ -121,12 +151,47 @@ API endpoints used by the React web UI:
 - `GET /api/recap/daily?date=YYYY-MM-DD&outlet=...`
 - `GET /api/recap/summary?range=TODAY|WEEK|MONTH&date=YYYY-MM-DD&outlet=...`
 
+API response envelope (all `/api/*` endpoints):
+
+```json
+{
+  "data": {},
+  "message": "OK",
+  "error": null
+}
+```
+
+POST request envelope (recommended for web/mobile clients):
+
+```json
+{
+  "data": {},
+  "message": "request context",
+  "error": null
+}
+```
+
 ## Mobile <-> Server
+
+## Mobile-First Setup Flow
+
+On a fresh tablet install, SuCash now starts in local-first mode:
+
+1. Open the app on Android.
+2. Complete `Mobile First Setup`.
+3. The app stores outlet identity, receipt config, pricing defaults, and optional opening cash session locally.
+4. Server pairing is optional and can be done later from `Settings`.
+
+What this means:
+
+- No server is required to start using the POS.
+- Menu, modifiers, transactions, recap, and cashflow work locally first.
+- Sync buttons stay disabled until `Server Base URL` is explicitly configured in `Settings`.
 
 From Android app:
 
 1. Open `Settings`
-2. Set `Server Base URL`
+2. Set `Server Base URL` only when you want to pair a server
    - emulator: `http://10.0.2.2:8080`
    - physical device: `http://<your-pc-lan-ip>:8080`
 3. Save settings
