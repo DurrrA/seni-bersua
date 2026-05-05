@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.data.repo.MenuRepository
 import com.durrr.first.data.repo.MenuSyncRepository
 import com.durrr.first.data.repo.SettingsRepository
@@ -229,7 +230,7 @@ private fun ProductManageCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Rp ${item.price}", fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                Text(formatRupiah(item.price), fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
                 Button(
                     onClick = onEdit,
                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = FigmaBlue),

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.data.repo.MenuRepository
 import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.data.repo.TransaksiSyncRepository
@@ -148,7 +149,7 @@ fun PosScreen(
                     ) {
                         Column {
                             Text(item.name)
-                            Text("Rp ${item.price}", style = MaterialTheme.typography.bodySmall)
+                            Text(formatRupiah(item.price), style = MaterialTheme.typography.bodySmall)
                         }
                         Button(onClick = {
                             val existing = cartItems.find { it.item.id == item.id }
@@ -464,7 +465,7 @@ private fun SummaryLine(
             fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
         )
         Text(
-            text = "Rp $amount",
+            text = formatRupiah(amount),
             style = if (emphasized) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
             fontWeight = if (emphasized) FontWeight.Bold else FontWeight.Normal,
         )

@@ -30,6 +30,8 @@ import com.durrr.first.data.repo.RecapRepository
 import com.durrr.first.data.repo.RecapSyncRepository
 import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.data.repo.CashFlowRepository
+import com.durrr.first.core.utils.formatNumber
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.domain.model.CashFlowSummary
 import com.durrr.first.domain.model.ProductRecap
 import com.durrr.first.domain.model.RecapDashboard
@@ -193,9 +195,9 @@ fun RecapScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            AppInfoLine("Pemasukan", "Rp ${flow.totalCashIn}")
-                            AppInfoLine("Refund/Batal", "Rp ${flow.totalRefundOrCancelled}")
-                            AppInfoLine("Saldo Bersih", "Rp ${flow.totalCashIn - flow.totalRefundOrCancelled}")
+                            AppInfoLine("Pemasukan", formatRupiah(flow.totalCashIn))
+                            AppInfoLine("Refund/Batal", formatRupiah(flow.totalRefundOrCancelled))
+                            AppInfoLine("Saldo Bersih", formatRupiah(flow.totalCashIn - flow.totalRefundOrCancelled))
                         }
                     }
                 }
@@ -209,7 +211,7 @@ fun RecapScreen(
                                 title = "Grafik Perbandingan",
                                 modifier = Modifier.weight(2.2f),
                             ) { AppBarChart(points = snapshot.chart, modifier = Modifier.fillMaxWidth()) }
-                            ProductPerformancePanel(
+                            RecommendationPanel(
                                 bestProduct = snapshot.bestProduct,
                                 lowestProduct = snapshot.lowestProduct,
                                 productInsight = snapshot.productInsight,
@@ -221,7 +223,7 @@ fun RecapScreen(
                             ChartPanel(title = "Grafik Perbandingan") {
                                 AppBarChart(points = snapshot.chart, modifier = Modifier.fillMaxWidth())
                             }
-                            ProductPerformancePanel(
+                            RecommendationPanel(
                                 bestProduct = snapshot.bestProduct,
                                 lowestProduct = snapshot.lowestProduct,
                                 productInsight = snapshot.productInsight,
@@ -305,25 +307,25 @@ private fun MetricsGrid(metrics: RecapMetrics, wide: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         if (wide) {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                RecapMetricCard("Total Pendapatan", "Rp ${metrics.totalSales}", Modifier.weight(1f))
-                RecapMetricCard("Laba Kotor", "Rp ${metrics.averagePerTransaction}", Modifier.weight(1f))
-                RecapMetricCard("Total Pengeluaran", "Rp ${metrics.totalDiscounts}", Modifier.weight(1f))
+                RecapMetricCard("Total Pendapatan", formatRupiah(metrics.totalSales), Modifier.weight(1f))
+                RecapMetricCard("Laba Kotor", formatRupiah(metrics.averagePerTransaction), Modifier.weight(1f))
+                RecapMetricCard("Total Pengeluaran", formatRupiah(metrics.totalDiscounts), Modifier.weight(1f))
             }
         } else {
-            RecapMetricCard("Total Pendapatan", "Rp ${metrics.totalSales}")
-            RecapMetricCard("Laba Kotor", "Rp ${metrics.averagePerTransaction}")
-            RecapMetricCard("Total Pengeluaran", "Rp ${metrics.totalDiscounts}")
+            RecapMetricCard("Total Pendapatan", formatRupiah(metrics.totalSales))
+            RecapMetricCard("Laba Kotor", formatRupiah(metrics.averagePerTransaction))
+            RecapMetricCard("Total Pengeluaran", formatRupiah(metrics.totalDiscounts))
         }
         if (wide) {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                RecapMetricCard("Total Transaksi", metrics.totalTransactions.toString(), Modifier.weight(1f))
-                RecapMetricCard("Rata-rata / Transaksi", "Rp ${metrics.averagePerTransaction}", Modifier.weight(1f))
-                RecapMetricCard("Diskon", "Rp ${metrics.totalDiscounts}", Modifier.weight(1f))
+                RecapMetricCard("Total Transaksi", formatNumber(metrics.totalTransactions.toLong()), Modifier.weight(1f))
+                RecapMetricCard("Rata-rata / Transaksi", formatRupiah(metrics.averagePerTransaction), Modifier.weight(1f))
+                RecapMetricCard("Diskon", formatRupiah(metrics.totalDiscounts), Modifier.weight(1f))
             }
         } else {
-            RecapMetricCard("Total Transaksi", metrics.totalTransactions.toString())
-            RecapMetricCard("Rata-rata / Transaksi", "Rp ${metrics.averagePerTransaction}")
-            RecapMetricCard("Diskon", "Rp ${metrics.totalDiscounts}")
+            RecapMetricCard("Total Transaksi", formatNumber(metrics.totalTransactions.toLong()))
+            RecapMetricCard("Rata-rata / Transaksi", formatRupiah(metrics.averagePerTransaction))
+            RecapMetricCard("Diskon", formatRupiah(metrics.totalDiscounts))
         }
     }
 }
@@ -335,12 +337,17 @@ private fun RecapMetricCard(
     modifier: Modifier = Modifier,
 ) {
     AppCard(modifier = modifier) {
-        Text(title, color = Color(0xFF767676), style = MaterialTheme.typography.titleMedium)
+        Text(
+            title,
+            color = Color(0xFF6B7280),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Medium,
+        )
         Text(
             value,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF6E6E6E),
+            color = RecapBlue,
         )
     }
 }
@@ -371,24 +378,40 @@ private fun ChartPanel(
 }
 
 @Composable
-private fun ProductPerformancePanel(
+private fun RecommendationPanel(
     bestProduct: ProductRecap?,
     lowestProduct: ProductRecap?,
     productInsight: String,
     modifier: Modifier = Modifier,
 ) {
+    val recommendations = buildPromoRecommendations(bestProduct, lowestProduct)
     AppCard(modifier = modifier) {
-        Text("Items Performance", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        ProductSummary(
-            title = "Top Seller",
-            product = bestProduct,
-            emptyMessage = "Belum ada item yang memenuhi minimum top seller.",
-        )
-        ProductSummary(
-            title = "Needs Attention",
-            product = lowestProduct,
-            emptyMessage = "Belum ada slow mover yang memenuhi minimum evaluasi.",
-        )
+        Text("Rekomendasi Bundle & Promo", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        if (recommendations.isEmpty()) {
+            Text(
+                "Belum cukup data untuk rekomendasi promo. Tambah transaksi dulu ya.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            recommendations.forEach { recommendation ->
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+                    shape = MaterialTheme.shapes.medium,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(Dimens.md),
+                        verticalArrangement = Arrangement.spacedBy(Dimens.xs),
+                    ) {
+                        AppStatusPill(label = recommendation.badge)
+                        Text(recommendation.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(recommendation.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         RecommendationCallout(
             productInsight = productInsight,
             hasSignal = bestProduct != null || lowestProduct != null,
@@ -396,33 +419,41 @@ private fun ProductPerformancePanel(
     }
 }
 
-@Composable
-private fun ProductSummary(
-    title: String,
-    product: ProductRecap?,
-    emptyMessage: String,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-        shape = MaterialTheme.shapes.medium,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(Dimens.md),
-            verticalArrangement = Arrangement.spacedBy(Dimens.xs),
-        ) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            if (product == null) {
-                Text(emptyMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Text(product.itemName, fontWeight = FontWeight.SemiBold)
-                AppInfoLine(label = "Qty", value = product.qty.toString())
-                AppInfoLine(label = "Revenue", value = "Rp ${product.revenue}")
-            }
-        }
+private data class PromoRecommendation(
+    val badge: String,
+    val title: String,
+    val detail: String,
+)
+
+private fun buildPromoRecommendations(
+    bestProduct: ProductRecap?,
+    lowestProduct: ProductRecap?,
+): List<PromoRecommendation> {
+    val recommendations = mutableListOf<PromoRecommendation>()
+
+    if (bestProduct != null && lowestProduct != null) {
+        recommendations += PromoRecommendation(
+            badge = "Bundle",
+            title = "Bundle ${bestProduct.itemName} + ${lowestProduct.itemName}",
+            detail = "Paketkan item terlaris dengan slow mover untuk dorong penjualan item yang lambat.",
+        )
     }
+    if (lowestProduct != null) {
+        recommendations += PromoRecommendation(
+            badge = "Promo",
+            title = "Promo terbatas untuk ${lowestProduct.itemName}",
+            detail = "Jadikan menu sementara 7 hari dengan diskon kecil atau bonus topping agar qty naik.",
+        )
+    }
+    if (bestProduct != null) {
+        recommendations += PromoRecommendation(
+            badge = "Upsell",
+            title = "Jadikan ${bestProduct.itemName} sebagai add-on utama",
+            detail = "Taruh di urutan atas kasir/QR order untuk menjaga momentum item paling laku.",
+        )
+    }
+
+    return recommendations.distinctBy { it.title }.take(3)
 }
 
 @Composable
@@ -491,8 +522,8 @@ private fun ProductListSummary(
         }
         products.forEach { product ->
             AppInfoLine(
-                label = "${product.itemName} • Qty ${product.qty}",
-                value = "Rp ${product.revenue}",
+                label = "${product.itemName} • Qty ${formatNumber(product.qty)}",
+                value = formatRupiah(product.revenue),
             )
         }
     }
@@ -510,7 +541,7 @@ private fun PaymentMethodSummary(
             return@AppCard
         }
         methods.forEach { method ->
-            AppInfoLine(label = method.methodName, value = "Rp ${method.total}")
+            AppInfoLine(label = method.methodName, value = formatRupiah(method.total))
         }
     }
 }
@@ -566,7 +597,7 @@ fun RecapScreenPreview() {
                 color = Color(0xFF6B7280),
             )
             MetricsGrid(metrics = sample.metrics, wide = false)
-            ProductPerformancePanel(
+            RecommendationPanel(
                 bestProduct = sample.bestProduct,
                 lowestProduct = sample.lowestProduct,
                 productInsight = sample.productInsight,

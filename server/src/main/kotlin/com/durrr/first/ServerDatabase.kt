@@ -439,7 +439,7 @@ object ServerDatabase {
             statement.setString(5, groupId)
             statement.setString(6, groupName)
             statement.setString(7, outletId)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
         MenuItem(id = id, name = name, price = request.price, groupId = groupId, groupName = groupName, outletId = outletId)
     }
@@ -451,7 +451,7 @@ object ServerDatabase {
         ).use { statement ->
             statement.setString(1, menuId)
             statement.setString(2, scopedOutletId)
-            statement.executeUpdate() > 0
+            executeWriteCount(statement) > 0
         }
     }
 
@@ -483,7 +483,7 @@ object ServerDatabase {
                 statement.setLong(4, if (request.isRequired) 1L else 0L)
                 statement.setLong(5, maxSelection.toLong())
                 statement.setString(6, outletId)
-                statement.executeUpdate()
+                executeWrite(statement)
             }
 
             connection.prepareStatement(
@@ -491,7 +491,7 @@ object ServerDatabase {
             ).use { statement ->
                 statement.setString(1, groupId)
                 statement.setString(2, outletId)
-                statement.executeUpdate()
+                executeWrite(statement)
             }
 
             connection.prepareStatement(
@@ -511,7 +511,7 @@ object ServerDatabase {
                     statement.setLong(6, if (option.isDefault) 1L else 0L)
                     statement.setString(7, outletId)
                     if (usingTurso) {
-                        statement.executeUpdate()
+                        executeWrite(statement)
                     } else {
                         statement.addBatch()
                     }
@@ -545,7 +545,7 @@ object ServerDatabase {
             ).use { statement ->
                 statement.setString(1, scopedItemId)
                 statement.setString(2, outletId)
-                statement.executeUpdate()
+                executeWrite(statement)
             }
 
             connection.prepareStatement(
@@ -560,7 +560,7 @@ object ServerDatabase {
                         statement.setString(2, groupId)
                         statement.setString(3, outletId)
                         if (usingTurso) {
-                            statement.executeUpdate()
+                            executeWrite(statement)
                         } else {
                             statement.addBatch()
                         }
@@ -674,7 +674,7 @@ object ServerDatabase {
                 statement.setString(7, now)
                 statement.setLong(8, total)
                 statement.setString(9, outletId)
-                statement.executeUpdate()
+                executeWrite(statement)
             }
 
             connection.prepareStatement(
@@ -693,7 +693,7 @@ object ServerDatabase {
                     statement.setLong(7, line.lineTotal)
                     statement.setString(8, line.note)
                     if (usingTurso) {
-                        statement.executeUpdate()
+                        executeWrite(statement)
                     } else {
                         statement.addBatch()
                     }
@@ -814,7 +814,7 @@ object ServerDatabase {
                 statement.setString(2, now)
                 statement.setString(3, orderId)
                 statement.setString(4, scopedOutletId)
-                statement.executeUpdate()
+                executeWriteCount(statement)
             }
 
             if (updated == 0) {
@@ -875,7 +875,7 @@ object ServerDatabase {
                     statement.setString(1, scopedEventId)
                     statement.setString(2, outletId)
                     statement.setString(3, Instant.now().toString())
-                    statement.executeUpdate()
+                    executeWrite(statement)
                 }
                 upsertTransaksiTransactional(connection, transaksi, outletId)
                 acks += TransactionEventAckDto(eventId = eventId, status = "ACCEPTED")
@@ -1471,6 +1471,15 @@ object ServerDatabase {
         }
     }
 
+    private fun executeWriteCount(statement: PreparedStatement): Int {
+        return if (usingTurso) {
+            statement.execute()
+            statement.updateCount.takeIf { it >= 0 } ?: 1
+        } else {
+            statement.executeUpdate()
+        }
+    }
+
     private fun executeWriteAllowMissingTable(statement: PreparedStatement, tableName: String) {
         try {
             executeWrite(statement)
@@ -1557,7 +1566,7 @@ object ServerDatabase {
             statement.setString(1, normalizedUuid)
             statement.setString(2, generatedName)
             statement.setString(3, now)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
         return Customer(
             uuid = normalizedUuid,
@@ -1889,7 +1898,7 @@ object ServerDatabase {
             statement.setString(5, "System")
             statement.setLong(6, order.total)
             statement.setString(7, outletId)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
 
         data class OrderItemMaterialize(
@@ -1943,7 +1952,7 @@ object ServerDatabase {
                 statement.setLong(7, item.lineTotal)
                 statement.setString(8, outletId)
                 if (usingTurso) {
-                    statement.executeUpdate()
+                    executeWrite(statement)
                 } else {
                     statement.addBatch()
                 }
@@ -1966,7 +1975,7 @@ object ServerDatabase {
             statement.setLong(4, order.total)
             statement.setString(5, mapOrderPaymentToType(order.paymentConfirmation))
             statement.setString(6, outletId)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
     }
 
@@ -2013,7 +2022,7 @@ object ServerDatabase {
             statement.setLong(9, transaksi.rounding)
             statement.setLong(10, transaksi.total)
             statement.setString(11, outletId)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
 
         connection.prepareStatement(
@@ -2021,14 +2030,14 @@ object ServerDatabase {
         ).use { statement ->
             statement.setString(1, transaksi.id)
             statement.setString(2, outletId)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
         connection.prepareStatement(
             "DELETE FROM pembayaran WHERE transaksi_id = ? AND outlet_id = ?"
         ).use { statement ->
             statement.setString(1, transaksi.id)
             statement.setString(2, outletId)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
 
         connection.prepareStatement(
@@ -2049,7 +2058,7 @@ object ServerDatabase {
                 statement.setLong(8, detail.total)
                 statement.setString(9, outletId)
                 if (usingTurso) {
-                    statement.executeUpdate()
+                    executeWrite(statement)
                 } else {
                     statement.addBatch()
                 }
@@ -2073,7 +2082,7 @@ object ServerDatabase {
             statement.setLong(5, transaksi.pembayaran.change)
             statement.setString(6, transaksi.pembayaran.paymentTypeId)
             statement.setString(7, outletId)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
 
         if (!existedBefore) {
@@ -2146,7 +2155,7 @@ object ServerDatabase {
                 statement.setString(8, "Checkout sync")
                 statement.setString(9, "sync")
                 statement.setString(10, createdAt)
-                statement.executeUpdate()
+                executeWrite(statement)
             }
         }
     }
@@ -2192,7 +2201,7 @@ object ServerDatabase {
             statement.setString(2, outletId)
             statement.setLong(3, qtyOnHand)
             statement.setString(4, updatedAt)
-            statement.executeUpdate()
+            executeWrite(statement)
         }
     }
 

@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.durrr.first.core.utils.formatNumber
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.data.repo.OrderCacheRepository
 import com.durrr.first.data.repo.OrderSyncRepository
 import com.durrr.first.data.repo.SettingsRepository
@@ -272,17 +274,19 @@ fun OrdersScreen(
                                     ) {
                                         Column {
                                             Text(item.itemName, fontWeight = FontWeight.SemiBold)
-                                            Text("Rp ${item.price} x ${item.qty}", color = Color.Gray)
+                                            Text("${formatRupiah(item.price)} x ${formatNumber(item.qty)}", color = Color.Gray)
                                         }
-                                        Text("Rp ${item.price * item.qty}", color = FigmaBlue, fontWeight = FontWeight.Bold)
+                                        Text(formatRupiah(item.price * item.qty), color = FigmaBlue, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
+                            val totalQty = selectedOrder.items.sumOf { it.qty }
+                            val totalAmount = selectedOrder.items.sumOf { it.price * it.qty }
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Ringkasan Pembayaran", fontWeight = FontWeight.SemiBold)
-                                SummaryLine("Item (${selectedOrder.items.sumOf { it.qty }})", "Rp ${selectedOrder.items.sumOf { it.price * it.qty }}")
-                                SummaryLine("Diskon", "Rp 0")
-                                SummaryLine("Total", "Rp ${selectedOrder.items.sumOf { it.price * it.qty }}")
+                                SummaryLine("Item (${formatNumber(totalQty)})", formatRupiah(totalAmount))
+                                SummaryLine("Diskon", formatRupiah(0L))
+                                SummaryLine("Total", formatRupiah(totalAmount))
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("Metode Pembayaran", fontWeight = FontWeight.SemiBold)
@@ -360,7 +364,7 @@ private fun OrderListCard(
                 Text("Pesanan $orderLabel", color = Color(0xFF5D5D5D), fontWeight = FontWeight.SemiBold)
                 Text("No. Meja : $tableLabel", color = Color(0xFF5D5D5D), fontWeight = FontWeight.SemiBold)
                 Text("Status : ${statusLabel(order.header.status)}", color = Color(0xFF5D5D5D), fontWeight = FontWeight.SemiBold)
-                Text("qty : ${order.items.sumOf { it.qty }}", color = Color(0xFF5D5D5D), fontWeight = FontWeight.SemiBold)
+                Text("qty : ${formatNumber(order.items.sumOf { it.qty })}", color = Color(0xFF5D5D5D), fontWeight = FontWeight.SemiBold)
                 order.header.notes?.takeIf { it.isNotBlank() }?.let { notes ->
                     Text(notes, color = Color(0xFF7A7A7A), style = MaterialTheme.typography.bodySmall)
                 }
@@ -368,7 +372,7 @@ private fun OrderListCard(
             Column(verticalArrangement = Arrangement.spacedBy(40.dp), horizontalAlignment = Alignment.End) {
                 Text(friendlyCreatedAt(order.header.createdAt), color = Color(0xFFB0B0B0))
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Text("Rp$total", color = FigmaBlue, fontWeight = FontWeight.Bold)
+                    Text(formatRupiah(total), color = FigmaBlue, fontWeight = FontWeight.Bold)
                     Text("QR Code", color = Color(0xFF5D5D5D))
                 }
             }

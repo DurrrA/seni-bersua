@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.data.repo.ReceiptRepository
 import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.domain.model.ReceiptData
@@ -306,16 +307,6 @@ private fun ReceiptDivider() {
         modifier = Modifier.padding(vertical = Dimens.xxs),
         color = Color.Black.copy(alpha = 0.3f),
     )
-}
-
-private fun formatRupiah(value: Long): String {
-    val sign = if (value < 0) "-" else ""
-    val absString = kotlin.math.abs(value).toString()
-    val grouped = absString.reversed()
-        .chunked(3)
-        .joinToString(".")
-        .reversed()
-    return "$sign" + "Rp $grouped"
 }
 
 @Preview

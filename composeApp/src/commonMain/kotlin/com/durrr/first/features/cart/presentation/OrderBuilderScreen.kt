@@ -39,7 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.data.repo.MenuRepository
 import com.durrr.first.data.repo.MenuSyncRepository
 import com.durrr.first.data.repo.SettingsRepository
@@ -486,7 +488,12 @@ private fun ProductCard(
             ) {
                 Text(item.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                 Text(item.code ?: "Kode Produk", color = Color.Gray)
-                Text("Rp ${item.price}", color = FigmaBlue, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    formatRupiah(item.price),
+                    color = FigmaBlue,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineMedium,
+                )
                 if (quantity <= 0) {
                     Button(
                         onClick = onAdd,
@@ -503,6 +510,7 @@ private fun ProductCard(
                         Text(
                             quantity.toString(),
                             modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                         )
@@ -535,7 +543,7 @@ private fun OptionChip(
         shape = RoundedCornerShape(999.dp),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
     ) {
-        val suffix = if (priceDelta == 0L) "" else " +$priceDelta"
+        val suffix = if (priceDelta == 0L) "" else " (+${formatRupiah(priceDelta)})"
         Text("$label$suffix")
     }
 }

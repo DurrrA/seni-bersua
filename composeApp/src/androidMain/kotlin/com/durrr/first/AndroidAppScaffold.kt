@@ -58,6 +58,7 @@ import com.durrr.first.features.product.presentation.ModifierGroupScreen
 import com.durrr.first.features.product.presentation.ProductScreen
 import com.durrr.first.features.product.presentation.ProductCategoryScreen
 import com.durrr.first.features.product.presentation.ProductEditorScreen
+import com.durrr.first.features.recommendation.presentation.RecommendationScreen
 import com.durrr.first.features.recap.presentation.RecapScreen
 import com.durrr.first.features.settings.presentation.SettingsScreen
 import com.durrr.first.features.stock.presentation.StockScreen
@@ -119,13 +120,14 @@ fun AndroidAppScaffold(
         else -> currentRoute?.title ?: "SuCash"
     }
 
-    val navigateToMainRoute: (String) -> Unit = { route ->
-        navController.navigate(route) {
-            popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
+    val navigateToMainRoute: (MainRoute) -> Unit = { route ->
+        if (currentDestination?.hierarchy?.any { it.route == route.route } != true) {
+            navController.navigate(route.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    inclusive = false
+                }
+                launchSingleTop = true
             }
-            launchSingleTop = true
-            restoreState = true
         }
     }
 
@@ -314,9 +316,9 @@ fun AndroidAppScaffold(
                         )
                     }
                     composable(RECOMMENDATION_ROUTE) {
-                        PlaceholderScreen(
-                            title = "Rekomendasi",
-                            message = "Fitur rekomendasi belum tersedia. Entry navigasi sudah disiapkan dengan ikon baru.",
+                        RecommendationScreen(
+                            menuRepository = dependencies.menuRepository,
+                            settingsRepository = dependencies.settingsRepository,
                         )
                     }
                 }
@@ -342,10 +344,16 @@ fun AndroidAppScaffold(
 private fun SidebarContent(
     currentDestination: androidx.navigation.NavDestination?,
     currentDestinationRoute: String?,
-    onNavigateMain: (String) -> Unit,
+    onNavigateMain: (MainRoute) -> Unit,
     onNavigateExtra: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isProductDestination =
+        currentDestination?.hierarchy?.any { it.route == MainRoute.MENU.route } == true ||
+            currentDestinationRoute == PRODUCT_EDITOR_ROUTE ||
+            currentDestinationRoute == PRODUCT_CATEGORY_ROUTE ||
+            currentDestinationRoute == MODIFIER_GROUP_ROUTE
+
     Column(
         modifier = modifier
             .width(188.dp)
@@ -399,7 +407,7 @@ private fun SidebarContent(
             label = "Dashboard",
             iconRes = R.drawable.nav_dashboard,
             selected = currentDestination?.hierarchy?.any { it.route == MainRoute.RECAP.route } == true,
-            onClick = { onNavigateMain(MainRoute.RECAP.route) },
+            onClick = { onNavigateMain(MainRoute.RECAP) },
         )
         SidebarEntry(
             label = "Kasir",
@@ -411,15 +419,13 @@ private fun SidebarContent(
             label = "Orders",
             iconRes = R.drawable.nav_orders,
             selected = currentDestination?.hierarchy?.any { it.route == MainRoute.ORDERS.route } == true,
-            onClick = { onNavigateMain(MainRoute.ORDERS.route) },
+            onClick = { onNavigateMain(MainRoute.ORDERS) },
         )
         SidebarEntry(
             label = "Produk",
             iconRes = R.drawable.nav_produk,
-            selected = currentDestination?.hierarchy?.any { it.route == MainRoute.MENU.route } == true ||
-                currentDestinationRoute == PRODUCT_EDITOR_ROUTE ||
-                currentDestinationRoute == PRODUCT_CATEGORY_ROUTE,
-            onClick = { onNavigateMain(MainRoute.MENU.route) },
+            selected = isProductDestination,
+            onClick = { onNavigateMain(MainRoute.MENU) },
         )
         SidebarEntry(
             label = "Arus Kas",
@@ -437,7 +443,7 @@ private fun SidebarContent(
             label = "Pengaturan",
             iconRes = MainRoute.SETTINGS.iconRes,
             selected = currentDestination?.hierarchy?.any { it.route == MainRoute.SETTINGS.route } == true,
-            onClick = { onNavigateMain(MainRoute.SETTINGS.route) },
+            onClick = { onNavigateMain(MainRoute.SETTINGS) },
         )
         }
     }

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.data.repo.MenuRepository
 import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.data.repo.TransaksiRepository
@@ -722,7 +723,7 @@ private fun CheckoutPreviewPane(
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                "Rp ${line.qty * line.price}",
+                                formatRupiah(line.qty * line.price),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -739,7 +740,7 @@ private fun CheckoutPreviewPane(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                "Unit Price: Rp ${line.price}",
+                                "Unit Price: ${formatRupiah(line.price)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -778,7 +779,7 @@ private fun CheckoutPreviewPane(
                     }
                 }
             }
-            AppInfoLine("Subtotal", "Rp $subtotal", emphasized = true)
+            AppInfoLine("Subtotal", formatRupiah(subtotal), emphasized = true)
         }
     }
 }
@@ -816,7 +817,7 @@ private fun InlineModifierEditor(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        val suffix = if (option.priceDelta == 0L) "" else " (+${option.priceDelta})"
+                        val suffix = if (option.priceDelta == 0L) "" else " (+${formatRupiah(option.priceDelta)})"
                         Text("${if (selected) "[x]" else "[ ]"} ${option.name}$suffix")
                     }
                 }
@@ -854,13 +855,13 @@ private fun CheckoutPaymentPane(
         AppCard {
             AppSectionHeader("Payment Summary", "Cash confirmation for current order")
             AmountField("Discount Plus", discountPlus, onDiscountChange)
-            AppInfoLine("Tax ($taxPercent%)", "Rp $taxValue")
-            AppInfoLine("Service ($servicePercent%)", "Rp $serviceChargeValue")
-            AppInfoLine("Rounding (Auto)", "Rp $roundingValue")
+            AppInfoLine("Tax ($taxPercent%)", formatRupiah(taxValue))
+            AppInfoLine("Service ($servicePercent%)", formatRupiah(serviceChargeValue))
+            AppInfoLine("Rounding (Auto)", formatRupiah(roundingValue))
             AmountField("Cash Paid", paid, onPaidChange)
-            AppInfoLine("Subtotal", "Rp ${totals.subtotal}")
-            AppInfoLine("Grand Total", "Rp ${totals.grandTotal}", emphasized = true)
-            AppInfoLine("Change", "Rp ${totals.change}", emphasized = true)
+            AppInfoLine("Subtotal", formatRupiah(totals.subtotal))
+            AppInfoLine("Grand Total", formatRupiah(totals.grandTotal), emphasized = true)
+            AppInfoLine("Change", formatRupiah(totals.change), emphasized = true)
             Row(horizontalArrangement = Arrangement.spacedBy(Dimens.xs)) {
                 OutlinedButton(
                     onClick = onPreview,
