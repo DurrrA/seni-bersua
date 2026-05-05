@@ -32,4 +32,5 @@ class AppDependencies(
     val todayDate: () -> String,
     val launchScanner: () -> Unit,
     val pickImage: ((String?) -> Unit) -> Unit,
+    val pickDate: (initialIso: String?, onPicked: (String) -> Unit) -> Unit,
 )

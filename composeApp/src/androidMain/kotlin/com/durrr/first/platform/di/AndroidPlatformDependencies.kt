@@ -10,10 +10,12 @@ fun rememberAndroidPlatformDependencies(
     context: Context,
     launchScanner: () -> Unit,
     pickImage: ((String?) -> Unit) -> Unit = { onPicked -> onPicked(null) },
+    pickDate: (initialIso: String?, onPicked: (String) -> Unit) -> Unit = { _, _ -> },
 ): AppDependencies {
     return rememberAppDependencies(
         context = context,
         launchScanner = launchScanner,
         pickImage = pickImage,
+        pickDate = pickDate,
     )
 }

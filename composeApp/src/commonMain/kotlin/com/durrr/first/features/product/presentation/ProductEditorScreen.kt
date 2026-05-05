@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,12 +16,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,8 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.durrr.first.core.utils.formatNumber
 import com.durrr.first.data.repo.MenuRepository
 import com.durrr.first.data.repo.MenuSyncRepository
 import com.durrr.first.data.repo.SettingsRepository
@@ -42,16 +49,53 @@ import com.durrr.first.domain.model.Item
 import com.durrr.first.domain.model.ModifierGroupBundle
 import com.durrr.first.domain.service.IdGenerator
 import com.durrr.first.ui.design.AppTheme
+import com.durrr.first.ui.media.ProductImageBanner
 import kotlinx.coroutines.launch
 
 private val FigmaBlue = Color(0xFF273BBF)
 private val FigmaBorder = Color(0xFFD5D9E2)
+private val HiddenProductCategoryIds = setOf(
+    "grp-rekomendasi-bundle",
+    "grp-rekomendasi-promo",
+)
+
+private fun normalizeCurrencyInput(value: String, maxDigits: Int = 12): String {
+    return value.filter(Char::isDigit).take(maxDigits)
+}
+
+private fun parseCurrencyInput(raw: String): Long? {
+    val digits = raw.filter(Char::isDigit)
+    if (digits.isBlank()) return null
+    return digits.toLongOrNull()
+}
+
+private fun formatCurrencyInput(raw: String): String {
+    val digits = raw.filter(Char::isDigit)
+    if (digits.isBlank()) return ""
+    return formatNumber(digits.toLongOrNull() ?: 0L)
+}
+
+private fun dedupeGroupsByName(
+    groups: List<GroupItem>,
+    selectedGroupId: String?,
+): List<GroupItem> {
+    val mapByName = linkedMapOf<String, GroupItem>()
+    groups.sortedBy { it.order }.forEach { group ->
+        val key = group.name.trim().lowercase()
+        val existing = mapByName[key]
+        if (existing == null || group.id == selectedGroupId) {
+            mapByName[key] = group
+        }
+    }
+    return mapByName.values.toList()
+}
 
 @Composable
 fun ProductEditorScreen(
     repo: MenuRepository,
     settingsRepository: SettingsRepository,
     menuSyncRepository: MenuSyncRepository,
+    pickImage: ((String?) -> Unit) -> Unit = { onPicked -> onPicked(null) },
     itemId: String?,
     onManageModifiers: () -> Unit = {},
     onSaved: () -> Unit,
@@ -62,6 +106,7 @@ fun ProductEditorScreen(
     var itemName by remember { mutableStateOf("") }
     var itemCode by remember { mutableStateOf("") }
     var itemPrice by remember { mutableStateOf("") }
+    var itemImageUrl by remember { mutableStateOf("") }
     var itemActive by remember { mutableStateOf(true) }
     var selectedGroupId by remember { mutableStateOf<String?>(null) }
     var selectedModifierGroupIds by remember { mutableStateOf(setOf<String>()) }
@@ -76,12 +121,15 @@ fun ProductEditorScreen(
     fun serverBaseUrl(): String? = settingsRepository.getOptionalServerBaseUrl()
 
     LaunchedEffect(itemId) {
-        groups = repo.getGroups(currentOutletId())
+        val allGroups = repo.getGroups(currentOutletId())
+            .filterNot { it.id in HiddenProductCategoryIds }
         modifierBundles = repo.getModifierGroupBundles(currentOutletId())
         if (itemId.isNullOrBlank()) {
+            groups = dedupeGroupsByName(allGroups, selectedGroupId = null)
             itemName = ""
             itemCode = ""
             itemPrice = ""
+            itemImageUrl = ""
             itemActive = true
             selectedGroupId = null
             selectedModifierGroupIds = emptySet()
@@ -89,9 +137,11 @@ fun ProductEditorScreen(
         }
 
         val item = repo.getItems(currentOutletId()).firstOrNull { it.id == itemId } ?: return@LaunchedEffect
+        groups = dedupeGroupsByName(allGroups, selectedGroupId = item.groupId)
         itemName = item.name
         itemCode = item.code.orEmpty()
         itemPrice = item.price.toString()
+        itemImageUrl = item.imageUrl.orEmpty()
         itemActive = item.isActive
         selectedGroupId = item.groupId
         selectedModifierGroupIds = repo.getModifierGroupIdsForItem(item.id, currentOutletId())
@@ -99,7 +149,7 @@ fun ProductEditorScreen(
 
     fun save() {
         val name = itemName.trim()
-        val price = itemPrice.toLongOrNull()
+        val price = parseCurrencyInput(itemPrice)
         if (name.isBlank()) {
             statusMessage = "Nama barang wajib diisi."
             return
@@ -115,6 +165,7 @@ fun ProductEditorScreen(
             price = price,
             groupId = selectedGroupId,
             code = itemCode.trim().ifBlank { null },
+            imageUrl = itemImageUrl.trim().ifBlank { null },
             isActive = itemActive,
             outletId = currentOutletId(),
         )
@@ -146,7 +197,16 @@ fun ProductEditorScreen(
         itemCode = itemCode,
         onItemCodeChange = { itemCode = it },
         itemPrice = itemPrice,
-        onItemPriceChange = { itemPrice = it },
+        onItemPriceChange = { itemPrice = normalizeCurrencyInput(it) },
+        itemImageUrl = itemImageUrl,
+        onItemImageUrlChange = { itemImageUrl = it },
+        onPickImage = {
+            pickImage { uri ->
+                if (!uri.isNullOrBlank()) {
+                    itemImageUrl = uri
+                }
+            }
+        },
         itemActive = itemActive,
         onItemActiveChange = { itemActive = it },
         selectedModifierGroupIds = selectedModifierGroupIds,
@@ -163,6 +223,7 @@ fun ProductEditorScreen(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProductEditorContent(
     title: String,
@@ -179,6 +240,9 @@ private fun ProductEditorContent(
     onItemCodeChange: (String) -> Unit,
     itemPrice: String,
     onItemPriceChange: (String) -> Unit,
+    itemImageUrl: String,
+    onItemImageUrlChange: (String) -> Unit,
+    onPickImage: () -> Unit,
     itemActive: Boolean,
     onItemActiveChange: (Boolean) -> Unit,
     selectedModifierGroupIds: Set<String>,
@@ -231,33 +295,73 @@ private fun ProductEditorContent(
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
-                value = itemPrice,
+                value = formatCurrencyInput(itemPrice),
                 onValueChange = onItemPriceChange,
                 label = { Text("Harga jual") },
-                supportingText = { Text("Masukkan angka tanpa titik atau koma.") },
+                supportingText = { Text("Format otomatis rupiah. Contoh: 32000 akan jadi 32.000.") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = itemImageUrl,
+                onValueChange = onItemImageUrlChange,
+                label = { Text("URL Foto Produk") },
+                supportingText = { Text("Opsional. Tempel URL gambar (https://...) untuk foto produk.") },
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
-                onClick = onOpenGroupDropdown,
+                onClick = onPickImage,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Color(0xFF333333),
-                ),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = FigmaBlue),
                 border = androidx.compose.foundation.BorderStroke(1.dp, FigmaBorder),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
             ) {
-                Text(groups.firstOrNull { it.id == selectedGroupId }?.name ?: "Pilih kategori")
+                Text("Pilih Foto dari Galeri")
             }
-            DropdownMenu(expanded = showGroupDropdown, onDismissRequest = onDismissGroupDropdown) {
-                if (groups.isEmpty()) {
-                    DropdownMenuItem(text = { Text("Belum ada kategori") }, onClick = onDismissGroupDropdown)
-                } else {
-                    groups.sortedBy { it.order }.forEach { group ->
+            ProductImageBanner(
+                imageUrl = itemImageUrl,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp),
+            )
+            ExposedDropdownMenuBox(
+                expanded = showGroupDropdown,
+                onExpandedChange = { expanded ->
+                    if (groups.isNotEmpty()) {
+                        if (expanded) onOpenGroupDropdown() else onDismissGroupDropdown()
+                    }
+                },
+            ) {
+                OutlinedTextField(
+                    value = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Kategori") },
+                    placeholder = { Text("Pilih kategori") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showGroupDropdown) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(
+                            type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                            enabled = true,
+                        ),
+                )
+                ExposedDropdownMenu(
+                    expanded = showGroupDropdown,
+                    onDismissRequest = onDismissGroupDropdown,
+                ) {
+                    if (groups.isEmpty()) {
                         DropdownMenuItem(
-                            text = { Text(group.name) },
-                            onClick = { onSelectGroup(group.id) },
+                            text = { Text("Belum ada kategori") },
+                            onClick = onDismissGroupDropdown,
                         )
+                    } else {
+                        groups.forEach { group ->
+                            DropdownMenuItem(
+                                text = { Text(group.name) },
+                                onClick = { onSelectGroup(group.id) },
+                            )
+                        }
                     }
                 }
             }
@@ -361,6 +465,7 @@ private fun ProductEditorScreenPreview() {
         var itemName by remember { mutableStateOf("Americano") }
         var itemCode by remember { mutableStateOf("MN003") }
         var itemPrice by remember { mutableStateOf("22000") }
+        var itemImageUrl by remember { mutableStateOf("") }
         var itemActive by remember { mutableStateOf(true) }
 
         ProductEditorContent(
@@ -392,6 +497,9 @@ private fun ProductEditorScreenPreview() {
             onItemCodeChange = { itemCode = it },
             itemPrice = itemPrice,
             onItemPriceChange = { itemPrice = it },
+            itemImageUrl = itemImageUrl,
+            onItemImageUrlChange = { itemImageUrl = it },
+            onPickImage = {},
             itemActive = itemActive,
             onItemActiveChange = { itemActive = it },
             selectedModifierGroupIds = setOf("mod1"),

@@ -236,6 +236,7 @@ fun AndroidAppScaffold(
                             repo = dependencies.menuRepository,
                             settingsRepository = dependencies.settingsRepository,
                             menuSyncRepository = dependencies.menuSyncRepository,
+                            pickImage = dependencies.pickImage,
                             itemId = rawItemId?.takeUnless { it == "new" },
                             onManageModifiers = { navController.navigate(MODIFIER_GROUP_ROUTE) },
                             onSaved = { navController.popBackStack() },
@@ -319,6 +320,8 @@ fun AndroidAppScaffold(
                         RecommendationScreen(
                             menuRepository = dependencies.menuRepository,
                             settingsRepository = dependencies.settingsRepository,
+                            menuSyncRepository = dependencies.menuSyncRepository,
+                            pickDate = dependencies.pickDate,
                         )
                     }
                 }

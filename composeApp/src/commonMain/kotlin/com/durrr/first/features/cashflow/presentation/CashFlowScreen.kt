@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import com.durrr.first.core.utils.formatRupiah
 import com.durrr.first.data.repo.CashFlowRepository
 import com.durrr.first.data.repo.CashSessionRepository
 import com.durrr.first.data.repo.SettingsRepository
@@ -50,7 +51,13 @@ fun CashFlowScreen(
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    var userIdText by remember { mutableStateOf("cashier") }
+    val defaultCashier = remember {
+        settingsRepository.getDefaultCashierName()
+            .orEmpty()
+            .ifBlank { settingsRepository.getDefaultCashierId().orEmpty() }
+            .ifBlank { "cashier" }
+    }
+    var userIdText by remember { mutableStateOf(defaultCashier) }
     var openingCashText by remember { mutableStateOf("0") }
     var moveAmountText by remember { mutableStateOf("0") }
     var moveNoteText by remember { mutableStateOf("") }
@@ -162,12 +169,12 @@ fun CashFlowScreen(
                         AppSectionHeader("Shift Aktif")
                         Text("Kasir: ${active.session.openedBy}")
                         Text("Buka: ${active.session.openedAt}")
-                        Text("Saldo Awal: ${toRupiah(active.session.openingCash)}")
-                        Text("Cash Sales: ${toRupiah(active.cashSales)}")
-                        Text("Cash In: ${toRupiah(active.cashIn)}")
-                        Text("Cash Out: ${toRupiah(active.cashOut)}")
+                        Text("Saldo Awal: ${formatRupiah(active.session.openingCash)}")
+                        Text("Cash Sales: ${formatRupiah(active.cashSales)}")
+                        Text("Cash In: ${formatRupiah(active.cashIn)}")
+                        Text("Cash Out: ${formatRupiah(active.cashOut)}")
                         Text(
-                            "Saldo Kas Saat Ini: ${toRupiah(active.expectedCashNow)}",
+                            "Saldo Kas Saat Ini: ${formatRupiah(active.expectedCashNow)}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -201,6 +208,7 @@ fun CashFlowScreen(
                                     scope.launch {
                                         runCatching {
                                             val amount = moveAmountText.toLongOrNull() ?: error("Nominal tidak valid")
+                                            if (amount <= 0L) error("Nominal harus lebih dari 0")
                                             cashSessionRepository.addCashIn(
                                                 sessionId = active.session.sessionId,
                                                 amount = amount,
@@ -226,6 +234,7 @@ fun CashFlowScreen(
                                     scope.launch {
                                         runCatching {
                                             val amount = moveAmountText.toLongOrNull() ?: error("Nominal tidak valid")
+                                            if (amount <= 0L) error("Nominal harus lebih dari 0")
                                             cashSessionRepository.addCashOut(
                                                 sessionId = active.session.sessionId,
                                                 amount = amount,
@@ -271,9 +280,17 @@ fun CashFlowScreen(
                 AppCard {
                     Column(verticalArrangement = Arrangement.spacedBy(Dimens.xs)) {
                         AppSectionHeader("Ringkasan Arus Kas")
-                        Text("Total Pemasukan: ${toRupiah(data.totalCashIn)}")
-                        Text("Refund / Batal: ${toRupiah(data.totalRefundOrCancelled)}")
-                        Text("Saldo Bersih: ${toRupiah(data.totalCashIn - data.totalRefundOrCancelled)}")
+                        Text("Total Pemasukan (Semua Metode): ${formatRupiah(data.totalCashIn)}")
+                        Text("Refund / Batal: ${formatRupiah(data.totalRefundOrCancelled)}")
+                        Text("Penjualan Tunai Bersih: ${formatRupiah(data.cashSalesNet)}")
+                        Text("Saldo Awal Sesi: ${formatRupiah(data.openingCashTotal)}")
+                        Text("Kas Masuk Manual: ${formatRupiah(data.manualCashIn)}")
+                        Text("Kas Keluar Manual: ${formatRupiah(data.manualCashOut)}")
+                        Text(
+                            "Posisi Kas Estimasi: ${formatRupiah(data.estimatedCashPosition)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
             }
@@ -285,7 +302,7 @@ fun CashFlowScreen(
                             Text("Belum ada pembayaran.")
                         } else {
                             data.byMethod.forEach { method ->
-                                Text("${method.methodName}: ${toRupiah(method.total)}")
+                                Text("${method.methodName}: ${formatRupiah(method.total)}")
                             }
                         }
                     }
@@ -308,7 +325,7 @@ fun CashFlowScreen(
                             Text(entry.transaksiId ?: "-", fontWeight = FontWeight.SemiBold)
                             Text("Tanggal: ${entry.dateTime?.take(19) ?: "-"}")
                             Text("Metode: ${entry.methodName}")
-                            Text("Nominal: ${toRupiah(entry.amount)}")
+                            Text("Nominal: ${formatRupiah(entry.amount)}")
                         }
                     }
                 }
@@ -327,8 +344,6 @@ private fun RangeTab(
         Text(if (selected) "• $title" else title)
     }
 }
-
-private fun toRupiah(value: Long): String = "Rp $value"
 
 @Preview
 @Composable

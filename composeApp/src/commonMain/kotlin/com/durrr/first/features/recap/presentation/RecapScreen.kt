@@ -94,7 +94,11 @@ fun RecapScreen(
                 )
             }.onSuccess {
                 dashboard = it.dashboard
-                dataSource = if (it.usedFallback) "Local" else "Server + Local"
+                dataSource = if (it.usedFallback) {
+                    "Local"
+                } else {
+                    "Server + Local (Arus Kas tetap dari local session)"
+                }
                 error = it.warning
             }.onFailure {
                 runCatching {
@@ -195,9 +199,15 @@ fun RecapScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
+                            Text(
+                                "Arus kas memakai cash session + pembayaran lokal device.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF6B7280),
+                            )
                             AppInfoLine("Pemasukan", formatRupiah(flow.totalCashIn))
                             AppInfoLine("Refund/Batal", formatRupiah(flow.totalRefundOrCancelled))
-                            AppInfoLine("Saldo Bersih", formatRupiah(flow.totalCashIn - flow.totalRefundOrCancelled))
+                            AppInfoLine("Penjualan Tunai Bersih", formatRupiah(flow.cashSalesNet))
+                            AppInfoLine("Posisi Kas Estimasi", formatRupiah(flow.estimatedCashPosition))
                         }
                     }
                 }

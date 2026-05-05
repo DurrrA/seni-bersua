@@ -182,7 +182,10 @@ class CashSessionRepository(private val db: TokoDatabase) {
         if (session.status != CashSessionStatus.OPEN) {
             error("Session is closed")
         }
-        val safeAmount = amount.coerceAtLeast(0L)
+        if (amount <= 0L) {
+            error("Nominal harus lebih dari 0")
+        }
+        val safeAmount = amount
         val movement = CashMovement(
             movementId = IdGenerator.newId("cm_"),
             sessionId = sessionId,

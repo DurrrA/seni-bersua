@@ -1223,6 +1223,38 @@ object ServerDatabase {
             )
             statement.execute(
                 """
+                CREATE TABLE IF NOT EXISTS cash_session (
+                    session_id TEXT PRIMARY KEY,
+                    outlet_id TEXT NOT NULL DEFAULT 'default',
+                    opened_by TEXT NOT NULL,
+                    opened_at TEXT NOT NULL,
+                    opening_cash INTEGER NOT NULL,
+                    closed_by TEXT,
+                    closed_at TEXT,
+                    closing_cash_counted INTEGER,
+                    expected_cash INTEGER,
+                    variance INTEGER,
+                    status TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+            statement.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cash_movement (
+                    movement_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    outlet_id TEXT NOT NULL DEFAULT 'default',
+                    movement_type TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    note TEXT,
+                    created_by TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (session_id) REFERENCES cash_session(session_id) ON DELETE CASCADE
+                )
+                """.trimIndent()
+            )
+            statement.execute(
+                """
                 CREATE TABLE IF NOT EXISTS processed_event (
                     event_id TEXT PRIMARY KEY,
                     outlet_id TEXT NOT NULL DEFAULT 'default',
@@ -1244,6 +1276,9 @@ object ServerDatabase {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_stock_balance_outlet_qty ON stock_item_balance(outlet_id, qty_on_hand)")
             statement.execute("CREATE INDEX IF NOT EXISTS idx_stock_ledger_outlet_item_date ON stock_ledger(outlet_id, item_id, created_at)")
             statement.execute("CREATE INDEX IF NOT EXISTS idx_stock_threshold_outlet_item ON stock_threshold(outlet_id, item_id)")
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_cash_session_outlet_status_opened ON cash_session(outlet_id, status, opened_at)")
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_cash_movement_session_type_date ON cash_movement(session_id, movement_type, created_at)")
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_cash_movement_outlet_date ON cash_movement(outlet_id, created_at)")
         }
     }
 
@@ -1402,6 +1437,34 @@ object ServerDatabase {
             )
             """.trimIndent(),
             """
+            CREATE TABLE IF NOT EXISTS cash_session (
+                session_id TEXT PRIMARY KEY,
+                outlet_id TEXT NOT NULL DEFAULT 'default',
+                opened_by TEXT NOT NULL,
+                opened_at TEXT NOT NULL,
+                opening_cash INTEGER NOT NULL,
+                closed_by TEXT,
+                closed_at TEXT,
+                closing_cash_counted INTEGER,
+                expected_cash INTEGER,
+                variance INTEGER,
+                status TEXT NOT NULL
+            )
+            """.trimIndent(),
+            """
+            CREATE TABLE IF NOT EXISTS cash_movement (
+                movement_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                outlet_id TEXT NOT NULL DEFAULT 'default',
+                movement_type TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                note TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES cash_session(session_id) ON DELETE CASCADE
+            )
+            """.trimIndent(),
+            """
             CREATE TABLE IF NOT EXISTS processed_event (
                 event_id TEXT PRIMARY KEY,
                 outlet_id TEXT NOT NULL DEFAULT 'default',
@@ -1437,6 +1500,9 @@ object ServerDatabase {
             "CREATE INDEX IF NOT EXISTS idx_stock_balance_outlet_qty ON stock_item_balance(outlet_id, qty_on_hand)",
             "CREATE INDEX IF NOT EXISTS idx_stock_ledger_outlet_item_date ON stock_ledger(outlet_id, item_id, created_at)",
             "CREATE INDEX IF NOT EXISTS idx_stock_threshold_outlet_item ON stock_threshold(outlet_id, item_id)",
+            "CREATE INDEX IF NOT EXISTS idx_cash_session_outlet_status_opened ON cash_session(outlet_id, status, opened_at)",
+            "CREATE INDEX IF NOT EXISTS idx_cash_movement_session_type_date ON cash_movement(session_id, movement_type, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_cash_movement_outlet_date ON cash_movement(outlet_id, created_at)",
         )
 
         connection.createStatement().use { statement ->

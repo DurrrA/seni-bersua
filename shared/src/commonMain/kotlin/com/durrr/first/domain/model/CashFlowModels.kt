@@ -18,6 +18,11 @@ data class CashFlowEntry(
 data class CashFlowSummary(
     val totalCashIn: Long,
     val totalRefundOrCancelled: Long,
+    val openingCashTotal: Long,
+    val cashSalesNet: Long,
+    val manualCashIn: Long,
+    val manualCashOut: Long,
+    val estimatedCashPosition: Long,
     val byMethod: List<CashFlowMethodTotal>,
     val recentEntries: List<CashFlowEntry>,
 )

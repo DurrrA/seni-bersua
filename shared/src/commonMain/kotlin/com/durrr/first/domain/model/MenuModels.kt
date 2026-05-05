@@ -13,6 +13,7 @@ data class Item(
     val price: Long,
     val groupId: String?,
     val code: String?,
+    val imageUrl: String? = null,
     val isActive: Boolean,
     val outletId: String? = null,
 )

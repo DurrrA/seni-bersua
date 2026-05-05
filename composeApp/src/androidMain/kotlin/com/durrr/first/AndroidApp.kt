@@ -31,6 +31,7 @@ fun rememberAppDependencies(
     context: Context,
     launchScanner: () -> Unit,
     pickImage: ((String?) -> Unit) -> Unit = { onPicked -> onPicked(null) },
+    pickDate: (initialIso: String?, onPicked: (String) -> Unit) -> Unit = { _, _ -> },
 ): AppDependencies {
     val db = remember {
         AndroidPlatformContextHolder.context = context.applicationContext
@@ -91,5 +92,6 @@ fun rememberAppDependencies(
         todayDate = { dateFormatter.format(Date()) },
         launchScanner = launchScanner,
         pickImage = pickImage,
+        pickDate = pickDate,
     )
 }

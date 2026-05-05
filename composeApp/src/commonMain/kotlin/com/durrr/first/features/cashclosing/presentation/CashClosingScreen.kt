@@ -45,7 +45,13 @@ fun CashClosingScreen(
     var moveAmountText by remember { mutableStateOf("0") }
     var moveNoteText by remember { mutableStateOf("") }
     var countedCashText by remember { mutableStateOf("0") }
-    var userIdText by remember { mutableStateOf("cashier") }
+    val defaultCashier = remember {
+        settingsRepository.getDefaultCashierName()
+            .orEmpty()
+            .ifBlank { settingsRepository.getDefaultCashierId().orEmpty() }
+            .ifBlank { "cashier" }
+    }
+    var userIdText by remember { mutableStateOf(defaultCashier) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -99,7 +105,7 @@ fun CashClosingScreen(
                         )
                         OutlinedTextField(
                             value = openingCashText,
-                            onValueChange = { openingCashText = it },
+                            onValueChange = { openingCashText = it.filter(Char::isDigit) },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("Opening Cash") },
                         )
@@ -156,7 +162,7 @@ fun CashClosingScreen(
                         AppSectionHeader("Cash In / Out")
                         OutlinedTextField(
                             value = moveAmountText,
-                            onValueChange = { moveAmountText = it },
+                            onValueChange = { moveAmountText = it.filter(Char::isDigit) },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("Amount") },
                         )
@@ -173,6 +179,7 @@ fun CashClosingScreen(
                                     scope.launch {
                                         runCatching {
                                             val amount = moveAmountText.toLongOrNull() ?: error("Invalid amount")
+                                            if (amount <= 0L) error("Amount must be greater than 0")
                                             cashSessionRepository.addCashIn(
                                                 sessionId = active.session.sessionId,
                                                 amount = amount,
@@ -200,6 +207,7 @@ fun CashClosingScreen(
                                     scope.launch {
                                         runCatching {
                                             val amount = moveAmountText.toLongOrNull() ?: error("Invalid amount")
+                                            if (amount <= 0L) error("Amount must be greater than 0")
                                             cashSessionRepository.addCashOut(
                                                 sessionId = active.session.sessionId,
                                                 amount = amount,
@@ -231,7 +239,7 @@ fun CashClosingScreen(
                         AppSectionHeader("Close Shift")
                         OutlinedTextField(
                             value = countedCashText,
-                            onValueChange = { countedCashText = it },
+                            onValueChange = { countedCashText = it.filter(Char::isDigit) },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("Counted Cash") },
                         )

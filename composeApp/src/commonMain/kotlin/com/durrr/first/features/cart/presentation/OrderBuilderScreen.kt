@@ -36,7 +36,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -54,6 +53,7 @@ import com.durrr.first.features.cart.domain.OrderDraft
 import com.durrr.first.features.cart.domain.OrderDraftLine
 import com.durrr.first.features.cart.domain.OrderDraftModifierSelection
 import com.durrr.first.features.cart.domain.OrderDraftStore
+import com.durrr.first.ui.media.ProductImageBanner
 
 private data class DraftCartItem(
     val item: Item,
@@ -466,12 +466,14 @@ private fun ProductCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
-                    .background(
-                        Brush.linearGradient(listOf(Color(0xFFF6E4B8), Color(0xFFB4782C))),
-                        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
-                    ),
+                    .height(180.dp),
             ) {
+                ProductImageBanner(
+                    imageUrl = item.imageUrl,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp),
+                )
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)

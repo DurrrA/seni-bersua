@@ -32,7 +32,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,6 +42,7 @@ import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.domain.model.GroupItem
 import com.durrr.first.domain.model.Item
 import com.durrr.first.ui.design.AppTheme
+import com.durrr.first.ui.media.ProductImageBanner
 import kotlinx.coroutines.launch
 
 private val FigmaBlue = Color(0xFF273BBF)
@@ -205,12 +205,14 @@ private fun ProductManageCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(140.dp)
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFFE2E8F0), Color(0xFFCBD5E1))),
-                    RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
-                )
+                .height(140.dp),
         ) {
+            ProductImageBanner(
+                imageUrl = item.imageUrl,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp),
+            )
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)

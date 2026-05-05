@@ -24,6 +24,7 @@ kotlin {
             implementation(libs.androidx.camera.lifecycle)
             implementation(libs.androidx.camera.view)
             implementation(libs.mlkit.barcode.scanning)
+            implementation(libs.coil.compose)
         }
         commonMain.dependencies {
             implementation(projects.shared)

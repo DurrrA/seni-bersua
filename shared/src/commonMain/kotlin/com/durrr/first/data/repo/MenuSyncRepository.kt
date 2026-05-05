@@ -1,6 +1,7 @@
 package com.durrr.first.data.repo
 
 import com.durrr.first.domain.model.Item
+import com.durrr.first.domain.model.GroupItem
 import com.durrr.first.domain.model.ModifierGroup
 import com.durrr.first.domain.model.ModifierOption
 import com.durrr.first.network.ServerApiClient
@@ -28,7 +29,12 @@ class MenuSyncRepository(
         baseUrl: String,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
     ): Int {
-        val localGroupNameById = menuRepository.getGroups(outletId).associate { it.id to it.name }.toMutableMap()
+        val localGroups = menuRepository.getGroups(outletId)
+        val localGroupNameById = localGroups.associate { it.id to it.name }.toMutableMap()
+        val localGroupIdByName = localGroups
+            .sortedBy { it.order }
+            .associate { normalizeGroupKey(it.name) to it.id }
+            .toMutableMap()
 
         val remoteCatalog = runCatching {
             apiClient.fetchMenuCatalog(baseUrl, outletId)
@@ -38,68 +44,83 @@ class MenuSyncRepository(
                 val localById = menuRepository.getItems(outletId).associateBy { it.id }
                 remote.forEach { remoteItem ->
                     val local = localById[remoteItem.id]
-                    val normalizedGroupId = remoteItem.groupId?.takeIf { it.isNotBlank() } ?: local?.groupId
                     val normalizedGroupName = resolveGroupName(
                         explicitName = remoteItem.groupName,
-                        existingName = normalizedGroupId?.let { localGroupNameById[it] },
+                        existingName = local?.groupId?.let { localGroupNameById[it] },
                         itemName = remoteItem.name,
                     )
-                    if (!normalizedGroupId.isNullOrBlank()) {
+                    val canonicalGroupId = resolveCanonicalGroupId(
+                        remoteGroupId = remoteItem.groupId,
+                        localGroupId = local?.groupId,
+                        groupName = normalizedGroupName,
+                        localGroupIdByName = localGroupIdByName,
+                    )
+                    if (!canonicalGroupId.isNullOrBlank()) {
                         menuRepository.upsertGroup(
-                            com.durrr.first.domain.model.GroupItem(
-                                id = normalizedGroupId,
+                            GroupItem(
+                                id = canonicalGroupId,
                                 name = normalizedGroupName,
                                 order = 0,
                                 outletId = remoteItem.outletId ?: outletId,
                             ),
                             outletId = remoteItem.outletId ?: outletId,
                         )
-                        localGroupNameById[normalizedGroupId] = normalizedGroupName
+                        localGroupNameById[canonicalGroupId] = normalizedGroupName
+                        localGroupIdByName.putIfAbsent(normalizeGroupKey(normalizedGroupName), canonicalGroupId)
                     }
                     menuRepository.upsertItem(
                         Item(
                             id = remoteItem.id,
                             name = remoteItem.name,
                             price = remoteItem.price,
-                            groupId = normalizedGroupId,
+                            groupId = canonicalGroupId,
                             code = local?.code,
+                            imageUrl = local?.imageUrl,
                             isActive = true,
                             outletId = remoteItem.outletId ?: outletId,
                         ),
                         outletId = remoteItem.outletId ?: outletId,
                     )
                 }
+                reconcileDuplicateGroupsByName(outletId)
             }.size
         }
         val remote = remoteCatalog.items
         val localById = menuRepository.getItems(outletId).associateBy { it.id }
         remote.forEach { remoteItem ->
             val local = localById[remoteItem.id]
-            val normalizedGroupId = remoteItem.groupId?.takeIf { it.isNotBlank() } ?: local?.groupId
             val normalizedGroupName = resolveGroupName(
                 explicitName = remoteItem.groupName,
-                existingName = normalizedGroupId?.let { localGroupNameById[it] },
+                existingName = local?.groupId?.let { localGroupNameById[it] },
                 itemName = remoteItem.name,
             )
-            if (!normalizedGroupId.isNullOrBlank()) {
+            val canonicalGroupId = resolveCanonicalGroupId(
+                remoteGroupId = remoteItem.groupId,
+                localGroupId = local?.groupId,
+                groupName = normalizedGroupName,
+                localGroupIdByName = localGroupIdByName,
+            )
+            if (!canonicalGroupId.isNullOrBlank()) {
                 menuRepository.upsertGroup(
-                    com.durrr.first.domain.model.GroupItem(
-                        id = normalizedGroupId,
+                    GroupItem(
+                        id = canonicalGroupId,
                         name = normalizedGroupName,
                         order = 0,
                         outletId = remoteItem.outletId ?: outletId,
                     ),
                     outletId = remoteItem.outletId ?: outletId,
                 )
-                localGroupNameById[normalizedGroupId] = normalizedGroupName
+                localGroupNameById[canonicalGroupId] = normalizedGroupName
+                localGroupIdByName.putIfAbsent(normalizeGroupKey(normalizedGroupName), canonicalGroupId)
             }
             menuRepository.upsertItem(
                 Item(
                     id = remoteItem.id,
                     name = remoteItem.name,
                     price = remoteItem.price,
-                    groupId = normalizedGroupId,
+                    groupId = canonicalGroupId,
                     code = local?.code,
+                    imageUrl = local?.imageUrl,
                     isActive = true,
                     outletId = remoteItem.outletId ?: outletId,
                 ),
@@ -139,6 +160,7 @@ class MenuSyncRepository(
                 outletId = outletId,
             )
         }
+        reconcileDuplicateGroupsByName(outletId)
         return remote.size
     }
 
@@ -255,6 +277,47 @@ class MenuSyncRepository(
         if (existing.isNotBlank() && !existing.equals("Kategori", ignoreCase = true)) return existing
 
         return inferGroupNameFromItemName(itemName)
+    }
+
+    private fun resolveCanonicalGroupId(
+        remoteGroupId: String?,
+        localGroupId: String?,
+        groupName: String,
+        localGroupIdByName: Map<String, String>,
+    ): String? {
+        val existingByName = localGroupIdByName[normalizeGroupKey(groupName)]
+        if (!existingByName.isNullOrBlank()) return existingByName
+        return remoteGroupId?.trim()?.takeIf { it.isNotBlank() }
+            ?: localGroupId?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun reconcileDuplicateGroupsByName(
+        outletId: String,
+    ) {
+        val groups = menuRepository.getGroups(outletId)
+        val items = menuRepository.getItems(outletId)
+        val byName = groups.groupBy { normalizeGroupKey(it.name) }
+        byName.values.forEach { sameNameGroups ->
+            if (sameNameGroups.size <= 1) return@forEach
+            val canonical = sameNameGroups.minWithOrNull(
+                compareBy<GroupItem> { it.order }.thenBy { it.id },
+            ) ?: return@forEach
+            sameNameGroups
+                .filter { it.id != canonical.id }
+                .forEach { duplicate ->
+                    items.filter { it.groupId == duplicate.id }.forEach { item ->
+                        menuRepository.upsertItem(
+                            item.copy(groupId = canonical.id),
+                            outletId = outletId,
+                        )
+                    }
+                    menuRepository.deleteGroup(duplicate.id, outletId)
+                }
+        }
+    }
+
+    private fun normalizeGroupKey(name: String): String {
+        return name.trim().lowercase().replace(Regex("\\s+"), " ")
     }
 
     private fun inferGroupNameFromItemName(itemName: String): String {

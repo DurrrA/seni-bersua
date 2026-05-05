@@ -1,5 +1,6 @@
 package com.durrr.first
 
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -20,6 +21,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.durrr.first.features.setup.presentation.LocalFirstSetupScreen
 import com.durrr.first.ui.design.AppTheme
 import java.io.File
+import java.util.Calendar
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private var defaultExceptionHandler: Thread.UncaughtExceptionHandler? = null
@@ -36,8 +39,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private val imagePickerLauncher = registerForActivityResult(
-        ActivityResultContracts.GetContent(),
+        ActivityResultContracts.OpenDocument(),
     ) { uri ->
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        }
         onImagePickedCallback?.invoke(uri?.toString())
         onImagePickedCallback = null
     }
@@ -52,9 +63,46 @@ class MainActivity : ComponentActivity() {
                 scannerLauncher.launch(Intent(this, QrScannerActivity::class.java))
             }, onPickImage = { onPicked ->
                 onImagePickedCallback = onPicked
-                imagePickerLauncher.launch("image/*")
+                imagePickerLauncher.launch(arrayOf("image/*"))
+            }, onPickDate = { initialIso, onPicked ->
+                launchDatePicker(initialIso = initialIso, onPicked = onPicked)
             })
         }
+    }
+
+    private fun launchDatePicker(
+        initialIso: String?,
+        onPicked: (String) -> Unit,
+    ) {
+        val calendar = Calendar.getInstance()
+        val parts = initialIso?.trim()?.split("-").orEmpty()
+        if (parts.size == 3) {
+            val year = parts[0].toIntOrNull()
+            val month = parts[1].toIntOrNull()
+            val day = parts[2].toIntOrNull()
+            if (year != null && month != null && day != null) {
+                calendar.set(Calendar.YEAR, year)
+                calendar.set(Calendar.MONTH, (month - 1).coerceIn(0, 11))
+                calendar.set(Calendar.DAY_OF_MONTH, day.coerceIn(1, 31))
+            }
+        }
+        DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                onPicked(
+                    String.format(
+                        Locale.US,
+                        "%04d-%02d-%02d",
+                        year,
+                        month + 1,
+                        dayOfMonth,
+                    ),
+                )
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH),
+        ).show()
     }
 
     private fun installCrashLogger() {
@@ -85,11 +133,13 @@ private fun AndroidAppContent(
     viewModel: MainViewModel,
     onLaunchScanner: () -> Unit,
     onPickImage: ((String?) -> Unit) -> Unit,
+    onPickDate: (initialIso: String?, onPicked: (String) -> Unit) -> Unit,
 ) {
     val dependencies = rememberAppDependencies(
         context = LocalContext.current,
         launchScanner = onLaunchScanner,
         pickImage = onPickImage,
+        pickDate = onPickDate,
     )
     var localSetupComplete by remember {
         mutableStateOf(dependencies.settingsRepository.isLocalSetupComplete())

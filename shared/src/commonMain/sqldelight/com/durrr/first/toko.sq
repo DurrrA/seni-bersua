@@ -658,10 +658,11 @@ INSERT OR REPLACE INTO toko_item(
   id_group_item,
   is_delete,
   kode,
+  keterangan,
   jenis_item,
   outlet_id
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 softDeleteItem:
 UPDATE toko_item
