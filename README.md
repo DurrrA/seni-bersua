@@ -8,14 +8,14 @@ Kotlin Multiplatform project with 3 modules:
 
 ## Android App Screens
 
-- `Mobile First Setup`: first-run local initialization for store info, pricing defaults, starter categories, and optional opening cash session
-- `Orders`: local cached incoming orders with status workflow `Accept -> Cooking -> Served -> Done`
+- `Mobile First Setup`: first-run local initialization for outlet info, owner + cashier local PIN, pricing defaults, starter categories, and optional opening cash session
+- `Orders`: local cached incoming orders with status workflow `Accept -> Done` (Selesai tab)
 - `New Order`: walk-in order builder (optional table token, menu pick, cart)
 - `Checkout`: cash checkout for the current draft order
 - `Menu`: group management, item CRUD, search/filter, temporary bundles (placeholder)
 - `Recap`: today/week/month filters, metrics, chart, payment-method breakdown, top/slow movers
 - `Settings`: receipt settings (store info, logo URIs, footer), sync, and shortcuts
-- `Cash Flow` (subpage): totals by method and recent entries
+- `Cash Flow` (subpage): shift-aware cash monitoring (opening cash, net cash sales, cash in/out, estimated cash position)
 - `Stock` (subpage): low-stock alerts, manual adjustment, threshold, movement history
 - `Cash Closing` (subpage): open shift, cash in/out, close shift with expected-vs-counted variance
 - `Receipt Preview` (route): `receiptPreview/{transaksiId}`
@@ -24,7 +24,7 @@ Kotlin Multiplatform project with 3 modules:
 
 Prerequisites:
 
-- JDK 17 configured (`JAVA_HOME` + `java` in PATH)
+- JDK 17+ configured (`JAVA_HOME` + `java` in PATH)
 - Android SDK installed and configured in Android Studio
 
 Build commands:
@@ -62,6 +62,12 @@ Run server:
 ```bash
 ./gradlew :server:run
 ```
+
+If you see:
+
+`JAVA_HOME is not set and no 'java' command could be found in your PATH`
+
+set `JAVA_HOME` first, then rerun Gradle.
 
 React webapp (Vite) source:
 
@@ -132,7 +138,7 @@ Server config precedence:
 After `:server:run`, open:
 
 - `http://localhost:8080/` for company/profile + seeded customer UUID links
-- `http://localhost:8080/dashboard` for cashier order monitor + accept/preparing/served actions + recap summary filters (Today/Week/Month)
+- `http://localhost:8080/dashboard` for cashier order monitor + `Accept -> Done` actions + recap summary filters (Today/Week/Month)
 - `http://localhost:8080/t/{customerUuid}` for customer checkout page
 - `http://localhost:8080/scan/{customerUuid}` as barcode-scan redirect target
 - subdomain-style host is supported as redirect to table route (example host header: `{customerUuid}.localhost` -> `/t/{customerUuid}`)
@@ -150,6 +156,7 @@ API endpoints used by the React web UI:
 - `POST /api/sync/transactions/batch`
 - `GET /api/recap/daily?date=YYYY-MM-DD&outlet=...`
 - `GET /api/recap/summary?range=TODAY|WEEK|MONTH&date=YYYY-MM-DD&outlet=...`
+- `POST /api/admin/reset-all?outlet=...`
 
 API response envelope (all `/api/*` endpoints):
 
@@ -179,7 +186,7 @@ On a fresh tablet install, SuCash now starts in local-first mode:
 
 1. Open the app on Android.
 2. Complete `Mobile First Setup`.
-3. The app stores outlet identity, receipt config, pricing defaults, and optional opening cash session locally.
+3. The app stores outlet identity, owner/cashier local account defaults, receipt config, pricing defaults, and optional opening cash session locally.
 4. Server pairing is optional and can be done later from `Settings`.
 
 What this means:
@@ -198,7 +205,7 @@ From Android app:
 4. Set `Outlet ID` (recommended; defaults to `default` if left blank)
 5. Open `Orders` screen and tap `Pull Orders`
 
-Status updates in mobile (`Accept`, `Prepare`, `Serve`) are sent to server and reflected in web dashboard.
+Status updates in mobile (`Accept`, `Done`) are sent to server and reflected in web dashboard.
 `New Order` also auto-pulls latest menu from server on open, and has a `Sync Menu` button for manual refresh.
 
 Menu sync:
@@ -237,6 +244,13 @@ Cash closing flow:
    - close shift with counted cash
 3. App computes expected cash and variance at close.
 
+Arus Kas summary logic:
+
+1. `Total Pemasukan` = sum of all payment methods in selected range.
+2. `Penjualan Tunai Bersih` = cash payments minus cancelled/refunded cash transactions.
+3. `Posisi Kas Estimasi` = `Opening Cash + Cash Sales Net + Manual Cash In - Manual Cash Out`.
+4. Weekly filter uses rolling last 7 calendar days (anchor day inclusive).
+
 Website order confirmation:
 
 1. On `/t/{customerUuid}`, customer can pick payment confirmation:
@@ -257,6 +271,9 @@ Manual full sync:
 3. Use `Manual Sync` section:
    - `Sync All Now`
    - or individual `Pull Orders`, `Pull Menu`, `Push Menu`, `Flush Transaksi`
+4. Reset actions are separated:
+   - `Reset Local Data` (clears local data and returns device to setup flow)
+   - `Reset Server Data` (calls `/api/admin/reset-all` for selected outlet)
 
 ## Notes
 
