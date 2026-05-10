@@ -45,12 +45,7 @@ fun CashClosingScreen(
     var moveAmountText by remember { mutableStateOf("0") }
     var moveNoteText by remember { mutableStateOf("") }
     var countedCashText by remember { mutableStateOf("0") }
-    val defaultCashier = remember {
-        settingsRepository.getDefaultCashierName()
-            .orEmpty()
-            .ifBlank { settingsRepository.getDefaultCashierId().orEmpty() }
-            .ifBlank { "cashier" }
-    }
+    val defaultCashier = remember { settingsRepository.resolveCurrentCashierName() }
     var userIdText by remember { mutableStateOf(defaultCashier) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()

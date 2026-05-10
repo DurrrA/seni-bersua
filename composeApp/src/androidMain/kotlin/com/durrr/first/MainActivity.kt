@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.durrr.first.features.auth.presentation.MobileLoginScreen
 import com.durrr.first.features.setup.presentation.LocalFirstSetupScreen
 import com.durrr.first.ui.design.AppTheme
 import java.io.File
@@ -155,13 +156,35 @@ private fun AndroidAppContent(
                     menuRepository = dependencies.menuRepository,
                     cashSessionRepository = dependencies.cashSessionRepository,
                     nowIso = dependencies.nowIso,
-                    onComplete = { localSetupComplete = true },
+                    onComplete = {
+                        dependencies.settingsRepository.clearActiveUser()
+                        localSetupComplete = true
+                        viewModel.markLoggedOut()
+                    },
+                )
+            } else if (!viewModel.loggedIn) {
+                MobileLoginScreen(
+                    settingsRepository = dependencies.settingsRepository,
+                    onLoginSuccess = { viewModel.markLoggedIn() },
+                    onRequireSetup = {
+                        dependencies.settingsRepository.clearActiveUser()
+                        viewModel.markLoggedOut()
+                        localSetupComplete = false
+                    },
                 )
             } else {
                 AndroidAppScaffold(
                     dependencies = dependencies,
                     viewModel = viewModel,
-                    onRequireLocalSetup = { localSetupComplete = false },
+                    onRequireLocalSetup = {
+                        dependencies.settingsRepository.clearActiveUser()
+                        viewModel.markLoggedOut()
+                        localSetupComplete = false
+                    },
+                    onLogout = {
+                        dependencies.settingsRepository.clearActiveUser()
+                        viewModel.markLoggedOut()
+                    },
                 )
             }
         }

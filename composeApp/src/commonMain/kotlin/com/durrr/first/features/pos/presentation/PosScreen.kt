@@ -88,14 +88,9 @@ fun PosScreen(
         menuItems = menuRepository.getItems(currentOutletId())
     }
 
-    fun currentCashierId(): String = settingsRepository.ensureDefaultCashierId(
-        settingsRepository.getDefaultCashierName(),
-    )
+    fun currentCashierId(): String = settingsRepository.resolveCurrentCashierId()
 
-    fun currentCashierName(): String = settingsRepository
-        .getDefaultCashierName()
-        ?.ifBlank { null }
-        ?: "Cashier"
+    fun currentCashierName(): String = settingsRepository.resolveCurrentCashierName()
 
     LaunchedEffect(Unit) { refreshMenu() }
     LaunchedEffect(scannedToken) {

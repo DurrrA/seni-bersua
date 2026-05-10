@@ -117,14 +117,9 @@ fun OrderCheckoutScreen(
             .ifBlank { SettingsRepository.DEFAULT_OUTLET_ID }
     }
 
-    fun currentCashierId(): String = settingsRepository.ensureDefaultCashierId(
-        settingsRepository.getDefaultCashierName(),
-    )
+    fun currentCashierId(): String = settingsRepository.resolveCurrentCashierId()
 
-    fun currentCashierName(): String = settingsRepository
-        .getDefaultCashierName()
-        ?.ifBlank { null }
-        ?: "Cashier"
+    fun currentCashierName(): String = settingsRepository.resolveCurrentCashierName()
 
     fun lineDisplayName(line: OrderDraftLine): String {
         if (line.modifiers.isEmpty()) return line.itemName

@@ -5,6 +5,12 @@ import com.durrr.first.domain.model.ReceiptConfig
 import com.durrr.first.domain.service.IdGenerator
 
 class SettingsRepository(private val db: TokoDatabase) {
+    data class LocalAccountSession(
+        val role: String,
+        val userId: String,
+        val userName: String,
+    )
+
     fun loadReceiptConfig(): ReceiptConfig {
         return runCatching {
             ensureSettingsTable()
@@ -64,12 +70,99 @@ class SettingsRepository(private val db: TokoDatabase) {
 
     fun getDefaultCashierName(): String? = getOptionalValue(KEY_DEFAULT_CASHIER_NAME)
 
+    fun getOwnerName(): String? = getOptionalValue(KEY_OWNER_NAME)
+
     fun ensureDefaultCashierId(existingName: String? = null): String {
         val existing = getDefaultCashierId()
         if (existing != null) return existing
         val generated = buildDefaultCashierId(existingName)
         upsert(KEY_DEFAULT_CASHIER_ID, generated)
         return generated
+    }
+
+    fun hasOwnerPinConfigured(): Boolean = isValidPin(getValue(KEY_OWNER_PIN))
+
+    fun hasCashierPinConfigured(): Boolean = isValidPin(getValue(KEY_DEFAULT_CASHIER_PIN))
+
+    fun hasAnyLoginPinConfigured(): Boolean = hasOwnerPinConfigured() || hasCashierPinConfigured()
+
+    fun verifyOwnerPin(pin: String): Boolean {
+        if (!isValidPin(pin)) return false
+        return getValue(KEY_OWNER_PIN) == pin
+    }
+
+    fun verifyCashierPin(pin: String): Boolean {
+        if (!isValidPin(pin)) return false
+        return getValue(KEY_DEFAULT_CASHIER_PIN) == pin
+    }
+
+    fun setActiveUserOwner(): Boolean {
+        val ownerName = getOwnerName()?.ifBlank { null } ?: "Owner"
+        return setActiveUser(
+            role = ROLE_OWNER,
+            userId = "owner",
+            userName = ownerName,
+        )
+    }
+
+    fun setActiveUserCashier(): Boolean {
+        val cashierName = getDefaultCashierName()?.ifBlank { null } ?: "Cashier"
+        val cashierId = ensureDefaultCashierId(cashierName)
+        return setActiveUser(
+            role = ROLE_CASHIER,
+            userId = cashierId,
+            userName = cashierName,
+        )
+    }
+
+    fun setActiveUser(role: String, userId: String, userName: String): Boolean {
+        if (role != ROLE_OWNER && role != ROLE_CASHIER) return false
+        if (userId.isBlank() || userName.isBlank()) return false
+        return runCatching {
+            ensureSettingsTable()
+            db.transaction {
+                db.tokoQueries.upsertAppSetting(KEY_ACTIVE_USER_ROLE, role)
+                db.tokoQueries.upsertAppSetting(KEY_ACTIVE_USER_ID, userId)
+                db.tokoQueries.upsertAppSetting(KEY_ACTIVE_USER_NAME, userName)
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    fun clearActiveUser(): Boolean {
+        return runCatching {
+            ensureSettingsTable()
+            db.transaction {
+                db.tokoQueries.upsertAppSetting(KEY_ACTIVE_USER_ROLE, "")
+                db.tokoQueries.upsertAppSetting(KEY_ACTIVE_USER_ID, "")
+                db.tokoQueries.upsertAppSetting(KEY_ACTIVE_USER_NAME, "")
+            }
+            true
+        }.getOrDefault(false)
+    }
+
+    fun getActiveUserSession(): LocalAccountSession? {
+        val role = getOptionalValue(KEY_ACTIVE_USER_ROLE) ?: return null
+        val userId = getOptionalValue(KEY_ACTIVE_USER_ID) ?: return null
+        val userName = getOptionalValue(KEY_ACTIVE_USER_NAME) ?: return null
+        if (role != ROLE_OWNER && role != ROLE_CASHIER) return null
+        return LocalAccountSession(
+            role = role,
+            userId = userId,
+            userName = userName,
+        )
+    }
+
+    fun resolveCurrentCashierId(): String {
+        return getActiveUserSession()?.userId
+            ?: ensureDefaultCashierId(getDefaultCashierName())
+    }
+
+    fun resolveCurrentCashierName(): String {
+        return getActiveUserSession()?.userName
+            ?: getDefaultCashierName()
+            ?.ifBlank { null }
+            ?: "Cashier"
     }
 
     fun isLocalSetupComplete(): Boolean {
@@ -129,8 +222,13 @@ class SettingsRepository(private val db: TokoDatabase) {
         const val KEY_DEFAULT_CASHIER_ID = "default_cashier_id"
         const val KEY_DEFAULT_CASHIER_NAME = "default_cashier_name"
         const val KEY_DEFAULT_CASHIER_PIN = "default_cashier_pin"
+        const val KEY_ACTIVE_USER_ROLE = "active_user_role"
+        const val KEY_ACTIVE_USER_ID = "active_user_id"
+        const val KEY_ACTIVE_USER_NAME = "active_user_name"
         const val DEFAULT_OUTLET_ID = "default"
         const val SETUP_MODE_LOCAL_FIRST = "LOCAL_FIRST"
+        const val ROLE_OWNER = "OWNER"
+        const val ROLE_CASHIER = "CASHIER"
 
         private fun defaultConfig(): ReceiptConfig = ReceiptConfig(
             storeName = "SuCash",
@@ -152,6 +250,10 @@ class SettingsRepository(private val db: TokoDatabase) {
             } else {
                 IdGenerator.newId("cashier_")
             }
+        }
+
+        private fun isValidPin(pin: String): Boolean {
+            return pin.length in 4..6 && pin.all(Char::isDigit)
         }
     }
 }

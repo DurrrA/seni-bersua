@@ -53,6 +53,7 @@ fun ProductScreen(
     repo: MenuRepository,
     settingsRepository: SettingsRepository,
     menuSyncRepository: MenuSyncRepository,
+    canManageCatalog: Boolean = true,
     onAddProduct: () -> Unit = {},
     onManageCategories: () -> Unit = {},
     onManageModifiers: () -> Unit = {},
@@ -112,10 +113,12 @@ fun ProductScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Daftar Produk", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FigmaButton("Kelola Kategori", outlined = true, onClick = onManageCategories)
-                    FigmaButton("Kelola Modifier", outlined = true, onClick = onManageModifiers)
-                    FigmaButton("Tambah Produk", outlined = false, onClick = onAddProduct)
+                if (canManageCatalog) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FigmaButton("Kelola Kategori", outlined = true, onClick = onManageCategories)
+                        FigmaButton("Kelola Modifier", outlined = true, onClick = onManageModifiers)
+                        FigmaButton("Tambah Produk", outlined = false, onClick = onAddProduct)
+                    }
                 }
             }
 
@@ -182,7 +185,8 @@ fun ProductScreen(
                     ProductManageCard(
                         item = item,
                         groupName = groupNameMap[item.groupId] ?: "Kategori",
-                        onEdit = { onEditProduct(item.id) }
+                        canManageCatalog = canManageCatalog,
+                        onEdit = { onEditProduct(item.id) },
                     )
                 }
             }
@@ -194,6 +198,7 @@ fun ProductScreen(
 private fun ProductManageCard(
     item: Item,
     groupName: String,
+    canManageCatalog: Boolean,
     onEdit: () -> Unit,
 ) {
     Column(
@@ -233,15 +238,17 @@ private fun ProductManageCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(formatRupiah(item.price), fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                Button(
-                    onClick = onEdit,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = FigmaBlue),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, FigmaBlue),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-                ) {
-                    Text("Edit")
+                if (canManageCatalog) {
+                    Button(
+                        onClick = onEdit,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = FigmaBlue),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, FigmaBlue),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                    ) {
+                        Text("Edit")
+                    }
                 }
             }
         }

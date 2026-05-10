@@ -51,12 +51,7 @@ fun CashFlowScreen(
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    val defaultCashier = remember {
-        settingsRepository.getDefaultCashierName()
-            .orEmpty()
-            .ifBlank { settingsRepository.getDefaultCashierId().orEmpty() }
-            .ifBlank { "cashier" }
-    }
+    val defaultCashier = remember { settingsRepository.resolveCurrentCashierName() }
     var userIdText by remember { mutableStateOf(defaultCashier) }
     var openingCashText by remember { mutableStateOf("0") }
     var moveAmountText by remember { mutableStateOf("0") }

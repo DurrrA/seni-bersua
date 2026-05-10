@@ -188,6 +188,8 @@ On a fresh tablet install, SuCash now starts in local-first mode:
 2. Complete `Mobile First Setup`.
 3. The app stores outlet identity, owner/cashier local account defaults, receipt config, pricing defaults, and optional opening cash session locally.
 4. Server pairing is optional and can be done later from `Settings`.
+5. After setup, app is locked by default and requires login using `Owner PIN` or `Cashier PIN`.
+6. `Settings -> Device Access -> Lock App (Logout)` returns the app to login screen.
 
 What this means:
 

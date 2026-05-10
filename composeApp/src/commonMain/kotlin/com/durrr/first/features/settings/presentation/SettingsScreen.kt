@@ -25,6 +25,7 @@ import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.data.repo.TransaksiSyncRepository
 import com.durrr.first.domain.model.ReceiptConfig
 import com.durrr.first.ui.design.AppCard
+import com.durrr.first.ui.design.AppInfoLine
 import com.durrr.first.ui.design.AppSectionHeader
 import com.durrr.first.ui.design.AppTheme
 import com.durrr.first.ui.design.Dimens
@@ -37,7 +38,9 @@ fun SettingsScreen(
     menuSyncRepository: MenuSyncRepository? = null,
     orderSyncRepository: OrderSyncRepository? = null,
     transaksiSyncRepository: TransaksiSyncRepository? = null,
+    isOwnerSession: Boolean = false,
     onRequireLocalSetup: () -> Unit = {},
+    onLogout: () -> Unit = {},
     onOpenCashFlow: () -> Unit = {},
     onOpenStock: () -> Unit = {},
     onOpenCashClosing: () -> Unit = {},
@@ -87,8 +90,34 @@ fun SettingsScreen(
         fun requireBaseUrl(): String = currentBaseUrlOrNull() ?: error("Set Server Base URL first in Settings.")
         fun currentOutletId(): String = outletId.trim().ifBlank { SettingsRepository.DEFAULT_OUTLET_ID }
         val hasServerConfigured = currentBaseUrlOrNull() != null
+        val activeSession = settingsRepository.getActiveUserSession()
+        val ownerAccess = isOwnerSession || activeSession?.role == SettingsRepository.ROLE_OWNER
+
+        fun requireOwnerAccessOrFail() {
+            if (!ownerAccess) {
+                error("Aksi ini khusus Owner.")
+            }
+        }
 
         AppSectionHeader("Settings", "Receipt and local app configuration")
+
+        AppCard {
+            Column(verticalArrangement = Arrangement.spacedBy(Dimens.xs)) {
+                AppSectionHeader("Device Access", "Login session untuk tablet ini")
+                AppInfoLine("Role", activeSession?.role ?: "-")
+                AppInfoLine("User", activeSession?.userName ?: "-")
+                AppInfoLine("User ID", activeSession?.userId ?: "-")
+                Button(
+                    onClick = {
+                        settingsRepository.clearActiveUser()
+                        onLogout()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Lock App (Logout)")
+                }
+            }
+        }
 
         AppCard {
             Column(verticalArrangement = Arrangement.spacedBy(Dimens.xs)) {
@@ -144,6 +173,10 @@ fun SettingsScreen(
                 )
                 Button(
                     onClick = {
+                        if (!ownerAccess) {
+                            savedMessage = "Hanya Owner yang boleh ubah pengaturan struk."
+                            return@Button
+                        }
                         val saved = settingsRepository.saveReceiptConfig(
                             ReceiptConfig(
                                 storeName = storeName,
@@ -159,12 +192,20 @@ fun SettingsScreen(
                             "Failed to save settings"
                         }
                     },
+                    enabled = ownerAccess,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Save Receipt Settings")
                 }
                 if (!savedMessage.isNullOrBlank()) {
                     Text(savedMessage.orEmpty())
+                }
+                if (!ownerAccess) {
+                    Text(
+                        text = "Mode kasir: pengaturan struk hanya bisa diubah owner.",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -207,6 +248,10 @@ fun SettingsScreen(
                 )
                 Button(
                     onClick = {
+                        if (!ownerAccess) {
+                            savedMessage = "Hanya Owner yang boleh ubah koneksi server/outlet."
+                            return@Button
+                        }
                         val baseUrlSaved = settingsRepository.upsert(
                             SettingsRepository.KEY_SERVER_BASE_URL,
                             serverBaseUrl.trim(),
@@ -233,6 +278,7 @@ fun SettingsScreen(
                             "Failed to save server settings"
                         }
                     },
+                    enabled = ownerAccess,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Save Connectivity Settings")
@@ -261,8 +307,12 @@ fun SettingsScreen(
                                         results += "transaksi_flush:$flushed"
                                     }
                                     menuSyncRepository?.let {
-                                        val pushedMenu = it.pushToServer(baseUrl, currentOutletId())
-                                        results += "menu_push:$pushedMenu"
+                                        if (ownerAccess) {
+                                            val pushedMenu = it.pushToServer(baseUrl, currentOutletId())
+                                            results += "menu_push:$pushedMenu"
+                                        } else {
+                                            results += "menu_push:skipped(owner_only)"
+                                        }
                                         val pulledMenu = it.pullFromServer(baseUrl, currentOutletId())
                                         results += "menu_pull:$pulledMenu"
                                     }
@@ -352,6 +402,7 @@ fun SettingsScreen(
                                         syncBusy = true
                                         syncMessage = null
                                         runCatching {
+                                            requireOwnerAccessOrFail()
                                             val pushed = menuSyncRepository.pushToServer(requireBaseUrl(), currentOutletId())
                                             "Pushed $pushed menu item(s)"
                                         }.onFailure {
@@ -362,7 +413,7 @@ fun SettingsScreen(
                                         syncBusy = false
                                     }
                                 },
-                                enabled = !syncBusy && hasServerConfigured,
+                                enabled = !syncBusy && hasServerConfigured && ownerAccess,
                             ) { Text("Push Menu") }
                         }
                     }
@@ -374,6 +425,7 @@ fun SettingsScreen(
                                         syncBusy = true
                                         syncMessage = null
                                         runCatching {
+                                            requireOwnerAccessOrFail()
                                             val baseUrl = requireBaseUrl()
                                             val outlet = currentOutletId()
                                             val flushed = transaksiSyncRepository?.flushPending(baseUrl, outlet) ?: 0
@@ -389,7 +441,7 @@ fun SettingsScreen(
                                         syncBusy = false
                                     }
                                 },
-                                enabled = !syncBusy && hasServerConfigured,
+                                enabled = !syncBusy && hasServerConfigured && ownerAccess,
                                 modifier = Modifier.weight(1f),
                             ) { Text("Force Align Data") }
                         }
@@ -400,6 +452,7 @@ fun SettingsScreen(
                                         syncBusy = true
                                         syncMessage = null
                                         runCatching {
+                                            requireOwnerAccessOrFail()
                                             val outletBeforeReset = currentOutletId()
                                             settingsRepository.resetAllLocal(outletBeforeReset)
                                             "Local reset complete. Returning to setup."
@@ -412,7 +465,7 @@ fun SettingsScreen(
                                         syncBusy = false
                                     }
                                 },
-                                enabled = !syncBusy,
+                                enabled = !syncBusy && ownerAccess,
                                 modifier = Modifier.weight(1f),
                             ) { Text("Reset Local Data") }
                             Button(
@@ -421,6 +474,7 @@ fun SettingsScreen(
                                         syncBusy = true
                                         syncMessage = null
                                         runCatching {
+                                            requireOwnerAccessOrFail()
                                             val baseUrl = requireBaseUrl()
                                             val outletBeforeReset = currentOutletId()
                                             menuSyncRepository.resetServerAllData(baseUrl, outletBeforeReset)
@@ -433,7 +487,7 @@ fun SettingsScreen(
                                         syncBusy = false
                                     }
                                 },
-                                enabled = !syncBusy && hasServerConfigured,
+                                enabled = !syncBusy && hasServerConfigured && ownerAccess,
                                 modifier = Modifier.weight(1f),
                             ) { Text("Reset Server Data") }
                         }
@@ -441,6 +495,13 @@ fun SettingsScreen(
                     if (!hasServerConfigured) {
                         Text(
                             "Server belum dipasang di device ini. Sync dan reset server akan aktif setelah URL server disimpan. Reset local tetap akan mengembalikan tablet ke setup awal.",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (!ownerAccess) {
+                        Text(
+                            "Mode kasir: push menu, force align, reset data, dan ubah koneksi hanya untuk owner.",
                             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         )

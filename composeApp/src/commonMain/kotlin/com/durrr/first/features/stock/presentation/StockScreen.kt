@@ -158,7 +158,7 @@ fun StockScreen(
                                             outletId = currentOutletId(),
                                             qtyDelta = qtyDelta,
                                             reason = reasonText.ifBlank { "Manual adjustment" },
-                                            user = "cashier",
+                                            user = settingsRepository.resolveCurrentCashierName(),
                                             createdAt = nowIso(),
                                             allowNegativeStock = allowNegativeStock(),
                                         )

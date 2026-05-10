@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -41,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.durrr.first.data.repo.SettingsRepository
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -95,6 +94,7 @@ fun AndroidAppScaffold(
     dependencies: AppDependencies,
     viewModel: MainViewModel,
     onRequireLocalSetup: () -> Unit = {},
+    onLogout: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -105,6 +105,8 @@ fun AndroidAppScaffold(
 
     val currentRoute = MainRoute.values().firstOrNull { it.route == currentDestinationRoute }
     val isMainRoute = currentRoute != null
+    val activeSession = dependencies.settingsRepository.getActiveUserSession()
+    val isOwner = activeSession?.role == SettingsRepository.ROLE_OWNER
     val currentEditorItemId = navBackStackEntry?.arguments?.getString("itemId")
     val topBarTitle = when {
         currentDestinationRoute == CASHFLOW_ROUTE -> "Arus Kas"
@@ -143,6 +145,7 @@ fun AndroidAppScaffold(
                 navController.navigate(route)
                 scope.launch { drawerState.close() }
             },
+            isOwner = isOwner,
         )
     }
 
@@ -221,6 +224,7 @@ fun AndroidAppScaffold(
                             repo = dependencies.menuRepository,
                             settingsRepository = dependencies.settingsRepository,
                             menuSyncRepository = dependencies.menuSyncRepository,
+                            canManageCatalog = isOwner,
                             onAddProduct = { navController.navigate("productEditor/new") },
                             onManageCategories = { navController.navigate(PRODUCT_CATEGORY_ROUTE) },
                             onManageModifiers = { navController.navigate(MODIFIER_GROUP_ROUTE) },
@@ -232,27 +236,48 @@ fun AndroidAppScaffold(
                         arguments = listOf(navArgument("itemId") { type = NavType.StringType }),
                     ) { entry ->
                         val rawItemId = entry.arguments?.getString("itemId")
-                        ProductEditorScreen(
-                            repo = dependencies.menuRepository,
-                            settingsRepository = dependencies.settingsRepository,
-                            menuSyncRepository = dependencies.menuSyncRepository,
-                            pickImage = dependencies.pickImage,
-                            itemId = rawItemId?.takeUnless { it == "new" },
-                            onManageModifiers = { navController.navigate(MODIFIER_GROUP_ROUTE) },
-                            onSaved = { navController.popBackStack() },
-                        )
+                        if (isOwner) {
+                            ProductEditorScreen(
+                                repo = dependencies.menuRepository,
+                                settingsRepository = dependencies.settingsRepository,
+                                menuSyncRepository = dependencies.menuSyncRepository,
+                                pickImage = dependencies.pickImage,
+                                itemId = rawItemId?.takeUnless { it == "new" },
+                                onManageModifiers = { navController.navigate(MODIFIER_GROUP_ROUTE) },
+                                onSaved = { navController.popBackStack() },
+                            )
+                        } else {
+                            AccessDeniedScreen(
+                                title = "Owner Only",
+                                message = "Hanya owner yang bisa mengubah katalog produk.",
+                            )
+                        }
                     }
                     composable(PRODUCT_CATEGORY_ROUTE) {
-                        ProductCategoryScreen(
-                            repo = dependencies.menuRepository,
-                            settingsRepository = dependencies.settingsRepository,
-                        )
+                        if (isOwner) {
+                            ProductCategoryScreen(
+                                repo = dependencies.menuRepository,
+                                settingsRepository = dependencies.settingsRepository,
+                            )
+                        } else {
+                            AccessDeniedScreen(
+                                title = "Owner Only",
+                                message = "Hanya owner yang bisa mengubah kategori produk.",
+                            )
+                        }
                     }
                     composable(MODIFIER_GROUP_ROUTE) {
-                        ModifierGroupScreen(
-                            repo = dependencies.menuRepository,
-                            settingsRepository = dependencies.settingsRepository,
-                        )
+                        if (isOwner) {
+                            ModifierGroupScreen(
+                                repo = dependencies.menuRepository,
+                                settingsRepository = dependencies.settingsRepository,
+                            )
+                        } else {
+                            AccessDeniedScreen(
+                                title = "Owner Only",
+                                message = "Hanya owner yang bisa mengubah modifier group.",
+                            )
+                        }
                     }
                     composable(MainRoute.RECAP.route) {
                         RecapScreen(
@@ -273,7 +298,9 @@ fun AndroidAppScaffold(
                             menuSyncRepository = dependencies.menuSyncRepository,
                             orderSyncRepository = dependencies.orderSyncRepository,
                             transaksiSyncRepository = dependencies.transaksiSyncRepository,
+                            isOwnerSession = isOwner,
                             onRequireLocalSetup = onRequireLocalSetup,
+                            onLogout = onLogout,
                             onOpenCashFlow = { navController.navigate(CASHFLOW_ROUTE) },
                             onOpenStock = { navController.navigate(STOCK_ROUTE) },
                             onOpenCashClosing = { navController.navigate(CASH_CLOSING_ROUTE) },
@@ -317,12 +344,19 @@ fun AndroidAppScaffold(
                         )
                     }
                     composable(RECOMMENDATION_ROUTE) {
-                        RecommendationScreen(
-                            menuRepository = dependencies.menuRepository,
-                            settingsRepository = dependencies.settingsRepository,
-                            menuSyncRepository = dependencies.menuSyncRepository,
-                            pickDate = dependencies.pickDate,
-                        )
+                        if (isOwner) {
+                            RecommendationScreen(
+                                menuRepository = dependencies.menuRepository,
+                                settingsRepository = dependencies.settingsRepository,
+                                menuSyncRepository = dependencies.menuSyncRepository,
+                                pickDate = dependencies.pickDate,
+                            )
+                        } else {
+                            AccessDeniedScreen(
+                                title = "Owner Only",
+                                message = "Rekomendasi bundle/promo hanya untuk owner.",
+                            )
+                        }
                     }
                 }
             }
@@ -349,6 +383,7 @@ private fun SidebarContent(
     currentDestinationRoute: String?,
     onNavigateMain: (MainRoute) -> Unit,
     onNavigateExtra: (String) -> Unit,
+    isOwner: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val isProductDestination =
@@ -361,7 +396,6 @@ private fun SidebarContent(
         modifier = modifier
             .width(188.dp)
             .fillMaxHeight()
-            .verticalScroll(rememberScrollState())
             .background(SidebarBlue)
             .padding(horizontal = 10.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.Start,
@@ -401,54 +435,56 @@ private fun SidebarContent(
                 )
             }
         }
-        Spacer(modifier = Modifier.weight(1f))
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-        SidebarEntry(
-            label = "Dashboard",
-            iconRes = R.drawable.nav_dashboard,
-            selected = currentDestination?.hierarchy?.any { it.route == MainRoute.RECAP.route } == true,
-            onClick = { onNavigateMain(MainRoute.RECAP) },
-        )
-        SidebarEntry(
-            label = "Kasir",
-            iconRes = R.drawable.nav_kasir,
-            selected = currentDestinationRoute == ORDER_BUILDER_ROUTE || currentDestinationRoute?.startsWith("orderCheckout/") == true,
-            onClick = { onNavigateExtra(ORDER_BUILDER_ROUTE) },
-        )
-        SidebarEntry(
-            label = "Orders",
-            iconRes = R.drawable.nav_orders,
-            selected = currentDestination?.hierarchy?.any { it.route == MainRoute.ORDERS.route } == true,
-            onClick = { onNavigateMain(MainRoute.ORDERS) },
-        )
-        SidebarEntry(
-            label = "Produk",
-            iconRes = R.drawable.nav_produk,
-            selected = isProductDestination,
-            onClick = { onNavigateMain(MainRoute.MENU) },
-        )
-        SidebarEntry(
-            label = "Arus Kas",
-            iconRes = R.drawable.nav_arus_kas,
-            selected = currentDestinationRoute == CASHFLOW_ROUTE,
-            onClick = { onNavigateExtra(CASHFLOW_ROUTE) },
-        )
-        SidebarEntry(
-            label = "Rekomendasi",
-            iconRes = R.drawable.nav_rekomendasi,
-            selected = currentDestinationRoute == RECOMMENDATION_ROUTE,
-            onClick = { onNavigateExtra(RECOMMENDATION_ROUTE) },
-        )
+            SidebarEntry(
+                label = "Dashboard",
+                iconRes = R.drawable.nav_dashboard,
+                selected = currentDestination?.hierarchy?.any { it.route == MainRoute.RECAP.route } == true,
+                onClick = { onNavigateMain(MainRoute.RECAP) },
+            )
+            SidebarEntry(
+                label = "Kasir",
+                iconRes = R.drawable.nav_kasir,
+                selected = currentDestinationRoute == ORDER_BUILDER_ROUTE || currentDestinationRoute?.startsWith("orderCheckout/") == true,
+                onClick = { onNavigateExtra(ORDER_BUILDER_ROUTE) },
+            )
+            SidebarEntry(
+                label = "Orders",
+                iconRes = R.drawable.nav_orders,
+                selected = currentDestination?.hierarchy?.any { it.route == MainRoute.ORDERS.route } == true,
+                onClick = { onNavigateMain(MainRoute.ORDERS) },
+            )
+            SidebarEntry(
+                label = "Produk",
+                iconRes = R.drawable.nav_produk,
+                selected = isProductDestination,
+                onClick = { onNavigateMain(MainRoute.MENU) },
+            )
+            SidebarEntry(
+                label = "Arus Kas",
+                iconRes = R.drawable.nav_arus_kas,
+                selected = currentDestinationRoute == CASHFLOW_ROUTE,
+                onClick = { onNavigateExtra(CASHFLOW_ROUTE) },
+            )
+            if (isOwner) {
+                SidebarEntry(
+                    label = "Rekomendasi",
+                    iconRes = R.drawable.nav_rekomendasi,
+                    selected = currentDestinationRoute == RECOMMENDATION_ROUTE,
+                    onClick = { onNavigateExtra(RECOMMENDATION_ROUTE) },
+                )
+            }
+        }
+        Spacer(modifier = Modifier.weight(1f))
         SidebarEntry(
             label = "Pengaturan",
             iconRes = MainRoute.SETTINGS.iconRes,
             selected = currentDestination?.hierarchy?.any { it.route == MainRoute.SETTINGS.route } == true,
             onClick = { onNavigateMain(MainRoute.SETTINGS) },
         )
-        }
     }
 }
 
@@ -522,4 +558,15 @@ private fun PlaceholderScreen(
             Text(text = message, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+private fun AccessDeniedScreen(
+    title: String,
+    message: String,
+) {
+    PlaceholderScreen(
+        title = title,
+        message = "$message Login sebagai Owner untuk melanjutkan.",
+    )
 }
