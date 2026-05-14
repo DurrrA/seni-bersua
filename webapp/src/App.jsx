@@ -1,5 +1,11 @@
 import React, { useRef } from "react";
 import logoImage from "./assets/images/logo.png";
+import rendaSesuaImage from "./assets/images/renda_sesua.png";
+import rendaHorizontal from "./assets/images/renda_horizontal.png";
+import MenuPage from "./MenuPage";
+import AboutPage from "./AboutPage";
+import ReservationPage from "./ReservationPage";
+import ContactPage from "./ContactPage";
 
 const menuItems = [
   {
@@ -68,7 +74,7 @@ const bundles = [
       "Mulai pagi Anda dengan sempurna - Signature Espresso pilihan barista kami, dipadu croissant butter hangat dan sepotong banana bread lembut. Energi terbaik untuk produktivitas maksimal.",
     price: "Rp 85.000",
     originalPrice: "Rp 110.000",
-   
+    image: rendaSesuaImage,
     accent: "linear-gradient(135deg, #f5e6d0, #e8d5c4)",
   },
   {
@@ -78,7 +84,7 @@ const bundles = [
       "Nikmati sore santai bersama sahabat. Dua gelas Iced Americano segar, french fries crispy, dan dessert pudding coklat - sempurna untuk nongkrong atau work-from-cafe.",
     price: "Rp 110.000",
     originalPrice: "Rp 158.000",
-  
+    image: rendaSesuaImage,
     accent: "linear-gradient(135deg, #e8f0e4, #d4e8f0)",
   },
 ];
@@ -91,6 +97,10 @@ const stats = [
 
 function App() {
   const menuCarouselRef = useRef(null);
+  const isMenuPage = window.location.pathname === "/web/menu";
+  const isAboutPage = window.location.pathname === "/web/about";
+  const isReservationPage = window.location.pathname === "/web/reservasi";
+  const isContactPage = window.location.pathname === "/web/kontak";
 
   function scrollCarousel(direction) {
     const element = menuCarouselRef.current;
@@ -105,6 +115,30 @@ function App() {
     }
   }
 
+  function navigateToSection(sectionId) {
+    if (isMenuPage || isAboutPage || isReservationPage || isContactPage) {
+      window.location.href = `/#${sectionId}`;
+      return;
+    }
+    scrollToSection(sectionId);
+  }
+
+  function navigateToMenuPage() {
+    window.location.href = "/web/menu";
+  }
+
+  function navigateToAboutPage() {
+    window.location.href = "/web/about";
+  }
+
+  function navigateToReservationPage() {
+    window.location.href = "/web/reservasi";
+  }
+
+  function navigateToContactPage() {
+    window.location.href = "/web/kontak";
+  }
+
   return (
     <div className="page-shell">
       <nav className="topbar">
@@ -114,21 +148,33 @@ function App() {
           </div>
         </div>
         <div className="nav-links">
-          <button type="button" onClick={() => scrollToSection("beranda")}>Beranda</button>
-          <button type="button" onClick={() => scrollToSection("menu")}>Menu</button>
-          <button type="button" onClick={() => scrollToSection("tentang")}>Tentang Kami</button>
-          <button type="button" onClick={() => scrollToSection("reservasi")}>Reservasi</button>
-          <button type="button" onClick={() => scrollToSection("event")}>Event</button>
-          <button type="button" onClick={() => scrollToSection("kontak")}>Kontak Kami</button>
+          <button type="button" onClick={() => navigateToSection("beranda")}>Beranda</button>
+          <button type="button" onClick={navigateToMenuPage}>Menu</button>
+          <button type="button" onClick={navigateToAboutPage}>Tentang Kami</button>
+          <button type="button" onClick={navigateToReservationPage}>Reservasi</button>
+          <button type="button" onClick={() => navigateToSection("event")}>Event</button>
+          <button type="button" onClick={navigateToContactPage}>Kontak Kami</button>
         </div>
       </nav>
 
       <main>
-        <section className="hero" id="beranda">
+        {isMenuPage ? (
+          <MenuPage />
+        ) : isAboutPage ? (
+          <AboutPage />
+        ) : isReservationPage ? (
+          <ReservationPage />
+        ) : isContactPage ? (
+          <ContactPage />
+        ) : (
+          <>
+            <section className="hero" id="beranda">
           
           <div className="hero-image-fallback" />
           
         </section>
+
+     
 
         <section className="menu-section" id="menu">
           <div className="menu-header">
@@ -164,8 +210,18 @@ function App() {
           <div className="menu-footer">
             <button type="button" className="btn-blue">Lihat di Menu →</button>
           </div>
-        </section>
 
+          
+
+        </section>
+   <section className="split-image-section">
+          <div className="split-image-panel split-image-left">
+            <img src={rendaHorizontal} alt="" />
+          </div>
+          <div className="split-image-panel split-image-right">
+            <img src={rendaHorizontal} alt="" />
+          </div>
+        </section>
         <section className="bundle-section" id="event">
           <div className="bundle-header">
             <div className="section-label">Promo Spesial</div>
@@ -176,6 +232,7 @@ function App() {
           {bundles.map((bundle) => (
             <article key={bundle.title} className="bundle-card">
               <div className="bundle-img">
+                <img src={bundle.image} alt="" className="bundle-side-image" />
                 <div className="bundle-img-placeholder" style={{ background: bundle.accent }}></div>
               </div>
               <div className="bundle-body">
@@ -219,15 +276,62 @@ function App() {
           <div className="cta-overlay" />
           <div className="cta-content">
             
-            <button type="button" className="btn-cta">Buat Reservasi Sekarang</button>
+            <button type="button" className="btn-cta" onClick={navigateToReservationPage}>Buat Reservasi Sekarang</button>
           </div>
         </section>
+
+        
+          </>
+        )}
       </main>
 
-      <footer id="kontak">
-        <p>
-          &copy; 2025 <span>Sesua Cafe</span>. All rights reserved. Crafted with ☕ and love.
-        </p>
+      <footer id="kontak" className="site-footer">
+        <div className="footer-grid">
+          <div className="footer-section footer-brand">
+            <img src={logoImage} alt="Sesua Cafe Logo" className="footer-logo" />
+            <p>Desa Ciawi, kec. Ciawi kab. Bogor depan cempaka 58 B kode pos 16720 nomor 68 rt.05 rw 04, Bogor, Indonesia 16720</p>
+          </div>
+
+          <div className="footer-section">
+            <div className="footer-title">Kategori &amp; Product</div>
+            <a href="/web/menu">Menu Kopi</a>
+            <a href="/promo">Promo Spesial</a>
+            <a href="/web/reservasi">Reservasi</a>
+          </div>
+
+          <div className="footer-section">
+            <div className="footer-title">Informasi</div>
+            <a href="/web/about">Tentang Kami</a>
+            <a href="/event">Event</a>
+            <a href="/web/kontak">Kontak Kami</a>
+          </div>
+
+          <div className="footer-section">
+            <div className="footer-title">Social Media</div>
+            <div className="footer-socials">
+              <a href="https://wa.me/" aria-label="WhatsApp" className="social-link">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12.04 2C6.56 2 2.1 6.32 2.1 11.64c0 1.7.46 3.35 1.33 4.8L2 22l5.74-1.38a10.2 10.2 0 0 0 4.3.95c5.48 0 9.94-4.32 9.94-9.64S17.52 2 12.04 2Zm0 17.92c-1.4 0-2.77-.35-3.98-1.02l-.28-.16-3.4.82.84-3.22-.18-.3a8.04 8.04 0 0 1-1.29-4.4c0-4.41 3.72-8 8.29-8s8.29 3.59 8.29 8-3.72 8.28-8.29 8.28Zm4.55-5.98c-.25-.12-1.47-.7-1.7-.78-.23-.08-.4-.12-.57.12-.17.25-.65.78-.8.94-.14.17-.29.19-.54.07-.25-.12-1.06-.38-2.01-1.2a7.43 7.43 0 0 1-1.39-1.67c-.15-.25-.02-.38.11-.5.12-.12.25-.3.38-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.43-.06-.12-.57-1.33-.78-1.82-.21-.48-.42-.41-.57-.42h-.49c-.17 0-.44.06-.67.31-.23.25-.88.84-.88 2.04 0 1.2.9 2.36 1.02 2.53.12.17 1.77 2.62 4.29 3.67.6.25 1.07.4 1.44.51.6.18 1.15.16 1.58.1.48-.07 1.47-.58 1.68-1.14.21-.56.21-1.04.15-1.14-.06-.1-.23-.16-.48-.28Z" />
+                </svg>
+              </a>
+              <a href="https://instagram.com/" aria-label="Instagram" className="social-link">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7.8 2h8.4A5.8 5.8 0 0 1 22 7.8v8.4a5.8 5.8 0 0 1-5.8 5.8H7.8A5.8 5.8 0 0 1 2 16.2V7.8A5.8 5.8 0 0 1 7.8 2Zm0 2A3.8 3.8 0 0 0 4 7.8v8.4A3.8 3.8 0 0 0 7.8 20h8.4a3.8 3.8 0 0 0 3.8-3.8V7.8A3.8 3.8 0 0 0 16.2 4H7.8Zm4.2 3.35A4.65 4.65 0 1 1 7.35 12 4.65 4.65 0 0 1 12 7.35Zm0 2A2.65 2.65 0 1 0 14.65 12 2.65 2.65 0 0 0 12 9.35ZM17 6.75a1.15 1.15 0 1 1-1.15 1.15A1.15 1.15 0 0 1 17 6.75Z" />
+                </svg>
+              </a>
+              <a href="https://tiktok.com/" aria-label="TikTok" className="social-link">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M15.5 2c.28 2.38 1.58 3.8 3.9 3.95v3.08a7.35 7.35 0 0 1-3.86-1.13v6.3c0 4.03-2.42 6.6-6.16 6.6A5.68 5.68 0 0 1 3.6 15.1c0-3.5 2.77-6 6.34-5.72v3.22c-1.64-.25-3.02.64-3.02 2.5a2.37 2.37 0 0 0 2.46 2.45c1.72 0 2.7-1.02 2.7-3.3V2h3.42Z" />
+                </svg>
+              </a>
+              <a href="mailto:hello@sesuacafe.com" aria-label="Email" className="social-link">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4.5 5h15A2.5 2.5 0 0 1 22 7.5v9A2.5 2.5 0 0 1 19.5 19h-15A2.5 2.5 0 0 1 2 16.5v-9A2.5 2.5 0 0 1 4.5 5Zm0 2c-.1 0-.2.01-.3.04L12 12.1l7.8-5.06a1 1 0 0 0-.3-.04h-15Zm15 10a.5.5 0 0 0 .5-.5V9.08l-7.46 4.84a1 1 0 0 1-1.08 0L4 9.08v7.42a.5.5 0 0 0 .5.5h15Z" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
       </footer>
     </div>
   );
