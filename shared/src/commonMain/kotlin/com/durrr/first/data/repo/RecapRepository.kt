@@ -114,21 +114,20 @@ class RecapRepository(private val db: TokoDatabase) {
         outletId: String,
     ): List<com.durrr.first.Toko_transaksi> {
         val all = db.tokoQueries.selectAllTransaksi(outletId).executeAsList()
+        val normalizedAnchorDate = extractDate(anchorDate)
+        val anchorEpochDay = toEpochDay(normalizedAnchorDate)
         return when (range) {
-            RecapRange.TODAY -> all.filter { extractDate(it.c_date) == anchorDate }
+            RecapRange.TODAY -> all.filter { extractDate(it.c_date) == normalizedAnchorDate }
             RecapRange.MONTH -> {
-                val anchorMonth = anchorDate.take(7)
+                val anchorMonth = normalizedAnchorDate.take(7)
                 all.filter { extractDate(it.c_date).take(7) == anchorMonth }
             }
             RecapRange.WEEK -> {
-                val dayKeys = all
-                    .map { extractDate(it.c_date) }
-                    .filter { it.isNotBlank() && it <= anchorDate }
-                    .distinct()
-                    .sorted()
-                    .takeLast(7)
-                    .toSet()
-                all.filter { extractDate(it.c_date) in dayKeys }
+                val endDay = anchorEpochDay ?: return emptyList()
+                all.filter { row ->
+                    val day = toEpochDay(extractDate(row.c_date)) ?: return@filter false
+                    day in (endDay - 6)..endDay
+                }
             }
             RecapRange.ALL -> all
         }
@@ -232,7 +231,53 @@ class RecapRepository(private val db: TokoDatabase) {
         return if (value.length >= 13) value.substring(11, 13) else "00"
     }
 
+    private fun toEpochDay(isoDate: String): Long? {
+        if (isoDate.length < 10) return null
+        val year = isoDate.substring(0, 4).toIntOrNull() ?: return null
+        val month = isoDate.substring(5, 7).toIntOrNull() ?: return null
+        val day = isoDate.substring(8, 10).toIntOrNull() ?: return null
+        if (month !in 1..12 || day !in 1..31) return null
+
+        val leap = isLeapYear(year)
+        val monthLength = when (month) {
+            1, 3, 5, 7, 8, 10, 12 -> 31
+            4, 6, 9, 11 -> 30
+            2 -> if (leap) 29 else 28
+            else -> return null
+        }
+        if (day > monthLength) return null
+
+        val yearLong = year.toLong()
+        val monthLong = month.toLong()
+        var total = 365L * yearLong +
+            floorDiv(yearLong + 3, 4) -
+            floorDiv(yearLong + 99, 100) +
+            floorDiv(yearLong + 399, 400)
+        total += floorDiv(367 * monthLong - 362, 12)
+        total += (day - 1).toLong()
+        if (month > 2) {
+            total -= if (leap) 1 else 2
+        }
+        return total - DAYS_0000_TO_1970
+    }
+
+    private fun floorDiv(x: Long, y: Long): Long {
+        var result = x / y
+        if ((x xor y) < 0 && result * y != x) {
+            result -= 1
+        }
+        return result
+    }
+
+    private fun isLeapYear(year: Int): Boolean {
+        return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    }
+
     private fun parseLong(value: String?): Long = value?.toLongOrNull() ?: 0L
+
+    private companion object {
+        const val DAYS_0000_TO_1970 = 719528L
+    }
 
     private fun migrateCompletedOrdersToTransaksi(outletId: String) {
         val completed = db.tokoQueries.selectAllOrders(outletId).executeAsList()

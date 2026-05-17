@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -19,8 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +49,7 @@ import com.durrr.first.domain.model.OrderItem
 import com.durrr.first.domain.model.OrderStatus
 import com.durrr.first.domain.model.OrderWithItems
 import com.durrr.first.network.dto.ServerOrderStatus
+import com.durrr.first.ui.notification.AppNotificationLevel
 import com.durrr.first.ui.design.AppTheme
 import kotlinx.coroutines.launch
 
@@ -62,15 +67,18 @@ fun OrdersScreen(
     orderRepository: OrderCacheRepository,
     orderSyncRepository: OrderSyncRepository,
     settingsRepository: SettingsRepository,
+    onNotify: (title: String, message: String, level: AppNotificationLevel) -> Unit = { _, _, _ -> },
     onCreateWalkInOrder: () -> Unit = {},
 ) {
     var orders by remember { mutableStateOf(emptyList<OrderWithItems>()) }
-    var isSyncing by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
+    var isPullingOrders by remember { mutableStateOf(false) }
+    var processingOrderId by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(OrderTab.PROCESS) }
     var selectedOrderId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val isBusy = isPullingOrders || processingOrderId != null
 
     fun serverBaseUrl(): String? = settingsRepository.getOptionalServerBaseUrl()
 
@@ -83,40 +91,57 @@ fun OrdersScreen(
         if (selectedOrderId == null && orders.isNotEmpty()) selectedOrderId = orders.first().header.id
     }
 
+    suspend fun showNotification(message: String?) {
+        val text = message.orEmpty().trim()
+        if (text.isBlank()) return
+        onNotify("Orders", text, notificationLevelForMessage(text))
+        snackbarHostState.showSnackbar(text)
+    }
+
     suspend fun pullOrders() {
         val baseUrl = serverBaseUrl() ?: run {
-            statusMessage = "Server belum dipasang. Orders yang tampil hanya cache lokal."
+            showNotification("Server belum dipasang. Orders yang tampil hanya cache lokal.")
             return
         }
-        isSyncing = true
-        statusMessage = null
+        isPullingOrders = true
         try {
             val pulled = orderSyncRepository.pullOrders(baseUrl, currentOutletId())
             reloadLocalOrders()
-            statusMessage = "Synced $pulled order(s)"
+            showNotification("Synced $pulled order(s)")
         } catch (t: Throwable) {
-            statusMessage = t.message ?: "Sync failed"
+            showNotification(t.message ?: "Sync failed")
         } finally {
-            isSyncing = false
+            isPullingOrders = false
         }
     }
 
     suspend fun advanceStatus(order: OrderWithItems) {
         val next = nextServerStatus(order.header.status) ?: return
-        val baseUrl = serverBaseUrl() ?: run {
-            statusMessage = "Server belum dipasang. Status order server tidak bisa diubah."
-            return
-        }
-        isSyncing = true
+        processingOrderId = order.header.id
         try {
-            orderSyncRepository.updateStatus(baseUrl, order.header.id, next, currentOutletId())
+            val result = orderSyncRepository.updateStatus(
+                baseUrl = serverBaseUrl(),
+                orderId = order.header.id,
+                targetStatus = next,
+                outletId = currentOutletId(),
+            )
             reloadLocalOrders()
             if (next == ServerOrderStatus.DONE) {
                 selectedTab = OrderTab.DONE
                 selectedOrderId = order.header.id
             }
+            val baseMessage = "Order ${friendlyOrderNumber(order)} -> ${nextActionResultLabel(next)}"
+            val notification = when {
+                result.remoteSynced -> "$baseMessage (server synced)"
+                !result.warning.isNullOrBlank() -> "$baseMessage (${result.warning})"
+                result.localSaved -> "$baseMessage (local saved)"
+                else -> "Gagal update status order."
+            }
+            showNotification(notification)
+        } catch (t: Throwable) {
+            showNotification(t.message ?: "Gagal update status order")
         } finally {
-            isSyncing = false
+            processingOrderId = null
         }
     }
 
@@ -129,7 +154,10 @@ fun OrdersScreen(
 
     val filteredOrders = orders.filter { order ->
         val inSelectedTab = when (selectedTab) {
-            OrderTab.PROCESS -> order.header.status == OrderStatus.NEW || order.header.status == OrderStatus.ACCEPTED
+            OrderTab.PROCESS -> order.header.status == OrderStatus.NEW ||
+                order.header.status == OrderStatus.ACCEPTED ||
+                order.header.status == OrderStatus.COOKING ||
+                order.header.status == OrderStatus.SERVED
             OrderTab.DONE -> order.header.status == OrderStatus.DONE
         }
         val matchesSearch = searchQuery.isBlank() ||
@@ -188,9 +216,6 @@ fun OrdersScreen(
                     }
                 }
             }
-            if (!statusMessage.isNullOrBlank()) {
-                Text(statusMessage.orEmpty(), color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-            }
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 OrderTab.values().forEach { tab ->
                     FigmaTab(
@@ -216,9 +241,14 @@ fun OrdersScreen(
                                 onClick = onCreateWalkInOrder,
                                 colors = ButtonDefaults.buttonColors(containerColor = FigmaBlue),
                             ) { Text("Buat Pesanan Baru") }
-                            FigmaOutlineButton(label = if (isSyncing) "Sync..." else "Pull Orders", onClick = {
+                            FigmaOutlineButton(
+                                label = "Pull Orders",
+                                onClick = {
                                 scope.launch { pullOrders() }
-                            })
+                                },
+                                enabled = !isBusy,
+                                loading = isPullingOrders,
+                            )
                         }
                         LazyColumn(
                             modifier = Modifier.weight(1f),
@@ -231,6 +261,8 @@ fun OrdersScreen(
                                     onClick = { selectedOrderId = order.header.id },
                                     actionLabel = if (selectedTab == OrderTab.PROCESS) nextActionLabel(order.header.status) else null,
                                     onActionClick = { scope.launch { advanceStatus(order) } },
+                                    actionEnabled = !isBusy,
+                                    actionLoading = processingOrderId == order.header.id,
                                 )
                             }
                         }
@@ -302,9 +334,23 @@ fun OrdersScreen(
                                 onClick = { scope.launch { advanceStatus(selectedOrder) } },
                                 colors = ButtonDefaults.buttonColors(containerColor = FigmaBlue),
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = !isSyncing && nextActionLabel(selectedOrder.header.status) != null,
+                                enabled = !isBusy && nextActionLabel(selectedOrder.header.status) != null,
                             ) {
-                                Text(nextActionLabel(selectedOrder.header.status) ?: "Selesai")
+                                if (processingOrderId == selectedOrder.header.id) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color.White,
+                                        )
+                                        Text("Processing...")
+                                    }
+                                } else {
+                                    Text(nextActionLabel(selectedOrder.header.status) ?: "Selesai")
+                                }
                             }
                         }
                     }
@@ -319,8 +365,10 @@ fun OrdersScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text("Buat Pesanan Baru") }
                             FigmaOutlineButton(
-                                label = if (isSyncing) "Sync..." else "Pull Orders",
+                                label = "Pull Orders",
                                 onClick = { scope.launch { pullOrders() } },
+                                enabled = !isBusy,
+                                loading = isPullingOrders,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -332,11 +380,28 @@ fun OrdersScreen(
                             onClick = { selectedOrderId = order.header.id },
                             actionLabel = if (selectedTab == OrderTab.PROCESS) nextActionLabel(order.header.status) else null,
                             onActionClick = { scope.launch { advanceStatus(order) } },
+                            actionEnabled = !isBusy,
+                            actionLoading = processingOrderId == order.header.id,
                         )
                     }
                 }
             }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 12.dp),
+        )
+    }
+}
+
+private fun notificationLevelForMessage(message: String): AppNotificationLevel {
+    val value = message.lowercase()
+    return when {
+        "failed" in value || "error" in value || "gagal" in value -> AppNotificationLevel.ERROR
+        "warning" in value || "offline" in value || "timeout" in value || "local saved" in value -> AppNotificationLevel.WARNING
+        else -> AppNotificationLevel.INFO
     }
 }
 
@@ -347,6 +412,8 @@ private fun OrderListCard(
     onClick: () -> Unit,
     actionLabel: String?,
     onActionClick: () -> Unit,
+    actionEnabled: Boolean = true,
+    actionLoading: Boolean = false,
 ) {
     val total = order.items.sumOf { it.price * it.qty }
     Column(
@@ -381,10 +448,25 @@ private fun OrderListCard(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Button(
                     onClick = onActionClick,
+                    enabled = actionEnabled && !actionLoading,
                     colors = ButtonDefaults.buttonColors(containerColor = FigmaBlue),
                     shape = RoundedCornerShape(12.dp),
                 ) {
-                    Text(actionLabel)
+                    if (actionLoading) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White,
+                            )
+                            Text("Loading...")
+                        }
+                    } else {
+                        Text(actionLabel)
+                    }
                 }
             }
         }
@@ -460,10 +542,13 @@ private fun FigmaSearchField(
 private fun FigmaOutlineButton(
     label: String,
     onClick: () -> Unit,
+    enabled: Boolean = true,
+    loading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Button(
         onClick = onClick,
+        enabled = enabled && !loading,
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         colors = ButtonDefaults.buttonColors(
@@ -473,7 +558,21 @@ private fun FigmaOutlineButton(
         border = androidx.compose.foundation.BorderStroke(1.dp, FigmaBorder),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
     ) {
-        Text(label)
+        if (loading) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = FigmaBlue,
+                )
+                Text("Sync...")
+            }
+        } else {
+            Text(label)
+        }
     }
 }
 
@@ -522,6 +621,17 @@ private fun nextActionLabel(status: OrderStatus): String? {
         OrderStatus.COOKING -> "Done"
         OrderStatus.SERVED -> "Done"
         OrderStatus.DONE, OrderStatus.CANCELLED -> null
+    }
+}
+
+private fun nextActionResultLabel(status: ServerOrderStatus): String {
+    return when (status) {
+        ServerOrderStatus.NEW -> "Baru"
+        ServerOrderStatus.ACCEPTED -> "Accepted"
+        ServerOrderStatus.PREPARING -> "Diproses"
+        ServerOrderStatus.SERVED -> "Disajikan"
+        ServerOrderStatus.DONE -> "Done"
+        ServerOrderStatus.CANCELLED -> "Dibatalkan"
     }
 }
 

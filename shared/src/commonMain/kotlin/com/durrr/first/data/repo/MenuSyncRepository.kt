@@ -17,12 +17,18 @@ import kotlinx.coroutines.delay
 class MenuSyncRepository(
     private val menuRepository: MenuRepository,
     private val apiClient: ServerApiClient,
+    private val settingsRepository: SettingsRepository? = null,
 ) {
     suspend fun resetServerAllData(
         baseUrl: String,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
     ) {
-        apiClient.resetAllData(baseUrl = baseUrl, outletId = outletId)
+        val bearerToken = requireBearerTokenForServerWrite()
+        apiClient.resetAllData(
+            baseUrl = baseUrl,
+            outletId = outletId,
+            bearerToken = bearerToken,
+        )
     }
 
     suspend fun pullFromServer(
@@ -168,6 +174,7 @@ class MenuSyncRepository(
         baseUrl: String,
         outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
     ): Int {
+        val bearerToken = requireBearerTokenForServerWrite()
         val modifierBundles = menuRepository.getModifierGroupBundles(outletId)
         modifierBundles.forEach { bundle ->
             withNetworkRetry {
@@ -190,6 +197,7 @@ class MenuSyncRepository(
                         },
                         outletId = outletId,
                     ),
+                    bearerToken = bearerToken,
                 )
             }
         }
@@ -212,6 +220,7 @@ class MenuSyncRepository(
                         groupId = resolvedGroupId,
                         groupName = resolvedGroupName,
                         outletId = outletId,
+                        bearerToken = bearerToken,
                     )
                 }
                 withNetworkRetry {
@@ -222,15 +231,49 @@ class MenuSyncRepository(
                             modifierGroupIds = menuRepository.getModifierGroupIdsForItem(item.id, outletId).toList(),
                             outletId = outletId,
                         ),
+                        bearerToken = bearerToken,
                     )
                 }
             } else {
                 withNetworkRetry {
-                    apiClient.deleteMenuItem(baseUrl, item.id, outletId)
+                    apiClient.deleteMenuItem(
+                        baseUrl = baseUrl,
+                        id = item.id,
+                        outletId = outletId,
+                        bearerToken = bearerToken,
+                    )
                 }
             }
         }
         return local.size
+    }
+
+    suspend fun deleteItemFromServer(
+        baseUrl: String,
+        itemId: String,
+        outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
+    ) {
+        val bearerToken = requireBearerTokenForServerWrite()
+        withNetworkRetry {
+            apiClient.deleteMenuItem(
+                baseUrl = baseUrl,
+                id = itemId,
+                outletId = outletId,
+                bearerToken = bearerToken,
+            )
+        }
+    }
+
+    private fun currentBearerToken(): String? {
+        return settingsRepository?.getActiveUserServerApiBearerToken()
+    }
+
+    private fun requireBearerTokenForServerWrite(): String {
+        val token = currentBearerToken()?.trim().orEmpty()
+        if (token.isNotBlank()) return token
+        error(
+            "Owner auth diperlukan. Isi 'Server API Shared Secret' (harus sama dengan SUCASH_API_SHARED_SECRET di server), lalu login ulang sebagai Owner."
+        )
     }
 
     private suspend fun <T> withNetworkRetry(
@@ -317,7 +360,10 @@ class MenuSyncRepository(
     }
 
     private fun normalizeGroupKey(name: String): String {
-        return name.trim().lowercase().replace(Regex("\\s+"), " ")
+        return name.trim()
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(Regex("\\s+"), " ")
     }
 
     private fun inferGroupNameFromItemName(itemName: String): String {

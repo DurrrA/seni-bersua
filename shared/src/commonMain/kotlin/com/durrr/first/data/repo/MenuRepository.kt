@@ -152,8 +152,32 @@ class MenuRepository(private val db: TokoDatabase) {
         )
     }
 
+    fun setItemOrderable(
+        itemId: String,
+        isOrderable: Boolean,
+        outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
+    ) {
+        if (isOrderable) {
+            db.tokoQueries.reactivateItem(itemId, outletId)
+        } else {
+            db.tokoQueries.softDeleteItem(itemId, outletId)
+        }
+    }
+
     fun deleteItem(itemId: String, outletId: String = SettingsRepository.DEFAULT_OUTLET_ID) {
         db.tokoQueries.softDeleteItem(itemId, outletId)
+    }
+
+    fun hardDeleteItem(itemId: String, outletId: String = SettingsRepository.DEFAULT_OUTLET_ID) {
+        db.transaction {
+            db.tokoQueries.deleteProductModifierLinksByItem(itemId, outletId)
+            db.tokoQueries.deleteStockLedgerByItem(itemId, outletId)
+            db.tokoQueries.deleteStockThresholdByItem(itemId, outletId)
+            db.tokoQueries.deleteStockBalanceByItem(itemId, outletId)
+            db.tokoQueries.clearTransaksiDetailItemReferenceByItem(itemId)
+            db.tokoQueries.clearOrderItemReferenceByItem(itemId)
+            db.tokoQueries.hardDeleteItem(itemId, outletId)
+        }
     }
 
     private fun parseLong(value: String?): Long = value?.toLongOrNull() ?: 0L

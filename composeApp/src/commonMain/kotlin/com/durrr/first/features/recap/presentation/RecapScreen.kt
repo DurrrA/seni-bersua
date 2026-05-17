@@ -46,6 +46,7 @@ import com.durrr.first.ui.design.AppLoading
 import com.durrr.first.ui.design.AppStatusPill
 import com.durrr.first.ui.design.AppTheme
 import com.durrr.first.ui.design.Dimens
+import com.durrr.first.ui.notification.AppNotificationLevel
 
 private val RecapBlue = Color(0xFF273BBF)
 private val RecapBorder = Color(0xFFD5D9E2)
@@ -56,14 +57,17 @@ fun RecapScreen(
     recapSyncRepository: RecapSyncRepository? = null,
     settingsRepository: SettingsRepository,
     todayDate: () -> String,
+    onNotify: (title: String, message: String, level: AppNotificationLevel) -> Unit = { _, _, _ -> },
     onOpenCashFlow: () -> Unit = {},
     onOpenStock: () -> Unit = {},
     onOpenCashClosing: () -> Unit = {},
+    onOpenTransactionHistory: () -> Unit = {},
 ) {
     var selectedRange by remember { mutableStateOf(RecapRange.ALL) }
     var dashboard by remember { mutableStateOf<RecapDashboard?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var lastSyncWarning by remember { mutableStateOf<String?>(null) }
     var dataSource by remember { mutableStateOf("Local") }
     var cashFlowSummary by remember { mutableStateOf<CashFlowSummary?>(null) }
 
@@ -99,16 +103,32 @@ fun RecapScreen(
                 } else {
                     "Server + Local (Arus Kas tetap dari local session)"
                 }
-                error = it.warning
+                if (!it.warning.isNullOrBlank()) {
+                    val simplified = simplifyRecapSyncMessage(it.warning)
+                    if (lastSyncWarning != simplified) {
+                        onNotify("Recap", simplified, AppNotificationLevel.WARNING)
+                        lastSyncWarning = simplified
+                    }
+                } else {
+                    lastSyncWarning = null
+                }
+                error = null
             }.onFailure {
                 runCatching {
                     recapRepository.getRecap(selectedRange, anchorDate, outletId)
                 }.onSuccess { local ->
                     dashboard = local
                     dataSource = "Local"
-                    error = "Server recap unavailable. Showing local data."
+                    val simplified = "Recap server tidak tersedia. Menampilkan data lokal."
+                    if (lastSyncWarning != simplified) {
+                        onNotify("Recap", simplified, AppNotificationLevel.WARNING)
+                        lastSyncWarning = simplified
+                    }
+                    error = null
                 }.onFailure { localError ->
-                    error = localError.message ?: "Failed to load recap."
+                    val simplified = simplifyRecapLoadError(localError.message)
+                    onNotify("Recap", simplified, AppNotificationLevel.ERROR)
+                    error = simplified
                     dashboard = null
                 }
             }
@@ -118,8 +138,11 @@ fun RecapScreen(
             }.onSuccess {
                 dashboard = it
                 dataSource = "Local"
+                error = null
             }.onFailure {
-                error = it.message ?: "Failed to load recap."
+                val simplified = simplifyRecapLoadError(it.message)
+                onNotify("Recap", simplified, AppNotificationLevel.ERROR)
+                error = simplified
                 dashboard = null
             }
         }
@@ -167,6 +190,7 @@ fun RecapScreen(
                             UtilityActionButton("Arus Kas", onOpenCashFlow)
                             UtilityActionButton("Stok", onOpenStock)
                             UtilityActionButton("Kas Closing", onOpenCashClosing)
+                            UtilityActionButton("Riwayat Trx", onOpenTransactionHistory)
                         }
                     }
                 } else {
@@ -180,6 +204,7 @@ fun RecapScreen(
                         UtilityActionButton("Arus Kas", onOpenCashFlow)
                         UtilityActionButton("Stok", onOpenStock)
                         UtilityActionButton("Kas Closing", onOpenCashClosing)
+                        UtilityActionButton("Riwayat Trx", onOpenTransactionHistory)
                     }
                 }
             }
@@ -318,24 +343,23 @@ private fun MetricsGrid(metrics: RecapMetrics, wide: Boolean) {
         if (wide) {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 RecapMetricCard("Total Pendapatan", formatRupiah(metrics.totalSales), Modifier.weight(1f))
-                RecapMetricCard("Laba Kotor", formatRupiah(metrics.averagePerTransaction), Modifier.weight(1f))
-                RecapMetricCard("Total Pengeluaran", formatRupiah(metrics.totalDiscounts), Modifier.weight(1f))
+                RecapMetricCard("Total Transaksi", formatNumber(metrics.totalTransactions.toLong()), Modifier.weight(1f))
+                RecapMetricCard("Rata-rata / Transaksi", formatRupiah(metrics.averagePerTransaction), Modifier.weight(1f))
             }
         } else {
             RecapMetricCard("Total Pendapatan", formatRupiah(metrics.totalSales))
-            RecapMetricCard("Laba Kotor", formatRupiah(metrics.averagePerTransaction))
-            RecapMetricCard("Total Pengeluaran", formatRupiah(metrics.totalDiscounts))
-        }
-        if (wide) {
-            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                RecapMetricCard("Total Transaksi", formatNumber(metrics.totalTransactions.toLong()), Modifier.weight(1f))
-                RecapMetricCard("Rata-rata / Transaksi", formatRupiah(metrics.averagePerTransaction), Modifier.weight(1f))
-                RecapMetricCard("Diskon", formatRupiah(metrics.totalDiscounts), Modifier.weight(1f))
-            }
-        } else {
             RecapMetricCard("Total Transaksi", formatNumber(metrics.totalTransactions.toLong()))
             RecapMetricCard("Rata-rata / Transaksi", formatRupiah(metrics.averagePerTransaction))
+        }
+        val netSales = (metrics.totalSales - metrics.totalDiscounts).coerceAtLeast(0L)
+        if (wide) {
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                RecapMetricCard("Diskon", formatRupiah(metrics.totalDiscounts), Modifier.weight(1f))
+                RecapMetricCard("Penjualan Bersih", formatRupiah(netSales), Modifier.weight(1f))
+            }
+        } else {
             RecapMetricCard("Diskon", formatRupiah(metrics.totalDiscounts))
+            RecapMetricCard("Penjualan Bersih", formatRupiah(netSales))
         }
     }
 }
@@ -464,6 +488,32 @@ private fun buildPromoRecommendations(
     }
 
     return recommendations.distinctBy { it.title }.take(3)
+}
+
+private fun simplifyRecapSyncMessage(raw: String?): String {
+    val message = raw.orEmpty()
+    val lower = message.lowercase()
+    return when {
+        "timeout" in lower -> "Koneksi ke server timeout. Menampilkan data lokal."
+        "failed to connect" in lower || "connection refused" in lower || "unreachable" in lower ->
+            "Tidak bisa terhubung ke server. Menampilkan data lokal."
+        "unexpected end of stream" in lower -> "Koneksi terputus saat sync recap. Menampilkan data lokal."
+        "server recap response error" in lower || "http" in lower || "api" in lower ->
+            "Respons server recap bermasalah. Menampilkan data lokal."
+        message.isBlank() -> "Sinkronisasi recap gagal. Menampilkan data lokal."
+        else -> "Sinkronisasi recap gagal. Menampilkan data lokal."
+    }
+}
+
+private fun simplifyRecapLoadError(raw: String?): String {
+    val lower = raw.orEmpty().lowercase()
+    return when {
+        "timeout" in lower -> "Gagal memuat recap: koneksi timeout."
+        "failed to connect" in lower || "connection refused" in lower || "unreachable" in lower ->
+            "Gagal memuat recap: tidak bisa terhubung ke data."
+        "no such table" in lower -> "Gagal memuat recap: struktur data belum siap."
+        else -> "Gagal memuat recap. Coba lagi."
+    }
 }
 
 @Composable

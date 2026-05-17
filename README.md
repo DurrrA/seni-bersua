@@ -158,6 +158,14 @@ API endpoints used by the React web UI:
 - `GET /api/recap/summary?range=TODAY|WEEK|MONTH&date=YYYY-MM-DD&outlet=...`
 - `POST /api/admin/reset-all?outlet=...`
 
+Protected write APIs (`POST /api/menu/*`, `POST /api/orders/{id}/status`, `POST /api/sync/transactions/batch`, `POST /api/admin/reset-all`) now use **opaque bearer token** auth:
+
+- `Authorization: Bearer <token>`
+- Token is derived from `role + pin + shared secret`.
+- Shared secret source on server env:
+  - `SUCASH_API_SHARED_SECRET`
+- If shared secret is empty, server allows local/private network requests only (dev fallback).
+
 API response envelope (all `/api/*` endpoints):
 
 ```json

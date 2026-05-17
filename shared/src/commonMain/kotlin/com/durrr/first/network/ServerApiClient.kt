@@ -21,6 +21,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -118,12 +119,14 @@ class ServerApiClient {
         groupId: String? = null,
         groupName: String? = null,
         outletId: String? = null,
+        bearerToken: String? = null,
     ): ServerMenuItemDto {
         val url = normalizeBaseUrl(baseUrl)
         val endpoint = "$url/api/menu/upsert"
         return client.post("$url/api/menu/upsert") {
             header(HttpHeaders.Connection, "close")
             header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            attachBearerToken(bearerToken)
             setBody(
                 ApiEnvelopeDto(
                     data = UpsertMenuItemRequest(
@@ -140,11 +143,17 @@ class ServerApiClient {
         }.unwrapApiData(endpoint)
     }
 
-    suspend fun deleteMenuItem(baseUrl: String, id: String, outletId: String? = null) {
+    suspend fun deleteMenuItem(
+        baseUrl: String,
+        id: String,
+        outletId: String? = null,
+        bearerToken: String? = null,
+    ) {
         val url = normalizeBaseUrl(baseUrl)
         val endpoint = "$url/api/menu/$id/delete"
         client.post("$url/api/menu/$id/delete") {
             header(HttpHeaders.Connection, "close")
+            attachBearerToken(bearerToken)
             if (!outletId.isNullOrBlank()) {
                 parameter("outlet", outletId)
             }
@@ -154,12 +163,14 @@ class ServerApiClient {
     suspend fun upsertModifierGroup(
         baseUrl: String,
         request: UpsertModifierGroupRequest,
+        bearerToken: String? = null,
     ) {
         val url = normalizeBaseUrl(baseUrl)
         val endpoint = "$url/api/menu/modifiers/upsert"
         client.post("$url/api/menu/modifiers/upsert") {
             header(HttpHeaders.Connection, "close")
             header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            attachBearerToken(bearerToken)
             setBody(
                 ApiEnvelopeDto(
                     data = request,
@@ -173,12 +184,14 @@ class ServerApiClient {
         baseUrl: String,
         itemId: String,
         request: AssignProductModifiersRequest,
+        bearerToken: String? = null,
     ) {
         val url = normalizeBaseUrl(baseUrl)
         val endpoint = "$url/api/menu/$itemId/modifiers/assign"
         client.post("$url/api/menu/$itemId/modifiers/assign") {
             header(HttpHeaders.Connection, "close")
             header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            attachBearerToken(bearerToken)
             setBody(
                 ApiEnvelopeDto(
                     data = request,
@@ -210,12 +223,14 @@ class ServerApiClient {
         orderId: String,
         status: ServerOrderStatus,
         outletId: String? = null,
+        bearerToken: String? = null,
     ): ServerOrderDto {
         val url = normalizeBaseUrl(baseUrl)
         val endpoint = "$url/api/orders/$orderId/status"
         return client.post("$url/api/orders/$orderId/status") {
             header(HttpHeaders.Connection, "close")
             header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            attachBearerToken(bearerToken)
             setBody(
                 ApiEnvelopeDto(
                     data = ServerOrderStatusRequest(status.name, outletId),
@@ -228,12 +243,14 @@ class ServerApiClient {
     suspend fun syncTransactions(
         baseUrl: String,
         request: TransactionBatchRequest,
+        bearerToken: String? = null,
     ): TransactionBatchResponse {
         val url = normalizeBaseUrl(baseUrl)
         val endpoint = "$url/api/sync/transactions/batch"
         return client.post("$url/api/sync/transactions/batch") {
             header(HttpHeaders.Connection, "close")
             header(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+            attachBearerToken(bearerToken)
             setBody(
                 ApiEnvelopeDto(
                     data = request,
@@ -276,11 +293,13 @@ class ServerApiClient {
     suspend fun resetAllData(
         baseUrl: String,
         outletId: String? = null,
+        bearerToken: String? = null,
     ) {
         val url = normalizeBaseUrl(baseUrl)
         val endpoint = "$url/api/admin/reset-all"
         client.post("$url/api/admin/reset-all") {
             header(HttpHeaders.Connection, "close")
+            attachBearerToken(bearerToken)
             if (!outletId.isNullOrBlank()) {
                 parameter("outlet", outletId)
             }
@@ -298,6 +317,12 @@ class ServerApiClient {
             RecapRange.MONTH -> RecapRangeDto.MONTH
             RecapRange.ALL -> RecapRangeDto.ALL
         }
+    }
+
+    private fun HttpRequestBuilder.attachBearerToken(bearerToken: String?) {
+        val token = bearerToken?.trim().orEmpty()
+        if (token.isBlank()) return
+        header(HttpHeaders.Authorization, "Bearer $token")
     }
 
     private suspend inline fun <reified T> HttpResponse.unwrapApiData(endpoint: String): T {

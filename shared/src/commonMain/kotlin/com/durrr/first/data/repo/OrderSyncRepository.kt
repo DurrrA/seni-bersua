@@ -12,8 +12,15 @@ class OrderSyncRepository(
     private val orderCacheRepository: OrderCacheRepository,
     private val apiClient: ServerApiClient,
     private val transaksiRepository: TransaksiRepository? = null,
+    private val settingsRepository: SettingsRepository? = null,
     private val nowIso: () -> String = { "" },
 ) {
+    data class UpdateStatusResult(
+        val localSaved: Boolean,
+        val remoteSynced: Boolean,
+        val warning: String? = null,
+    )
+
     suspend fun pullOrders(baseUrl: String, outletId: String? = null): Int {
         val remoteOrders = apiClient.fetchOrders(
             baseUrl = baseUrl,
@@ -31,13 +38,100 @@ class OrderSyncRepository(
     }
 
     suspend fun updateStatus(
-        baseUrl: String,
+        baseUrl: String?,
         orderId: String,
         targetStatus: ServerOrderStatus,
         outletId: String? = null,
-    ) {
-        val updated = apiClient.updateOrderStatus(baseUrl, orderId, targetStatus, outletId)
-        cacheRemoteOrder(updated)
+    ): UpdateStatusResult {
+        val scopedOutletId = outletId.orEmpty().ifBlank { SettingsRepository.DEFAULT_OUTLET_ID }
+        var localSaved = false
+
+        val localOrder = orderCacheRepository.getOrderById(orderId, scopedOutletId)
+        if (localOrder != null) {
+            val localStatus = mapStatus(targetStatus.name)
+            val updatedHeader = localOrder.header.copy(
+                status = localStatus,
+                updatedAt = nowIso().ifBlank { localOrder.header.updatedAt },
+                outletId = scopedOutletId,
+            )
+            orderCacheRepository.upsertOrder(
+                order = updatedHeader,
+                items = localOrder.items,
+                outletId = scopedOutletId,
+            )
+            if (localStatus == OrderStatus.DONE) {
+                transaksiRepository?.ensureOrderRecordedAsTransaksi(
+                    order = updatedHeader,
+                    items = localOrder.items,
+                    nowIso = nowIso,
+                    outletId = scopedOutletId,
+                )
+            }
+            localSaved = true
+        }
+
+        val normalizedBaseUrl = baseUrl?.trim().orEmpty().ifBlank { null }
+        if (normalizedBaseUrl == null) {
+            return UpdateStatusResult(
+                localSaved = localSaved,
+                remoteSynced = false,
+                warning = if (localSaved) {
+                    "Status tersimpan lokal. Nanti sync setelah server tersedia."
+                } else {
+                    "Status belum bisa disimpan karena order lokal tidak ditemukan."
+                },
+            )
+        }
+
+        val bearerToken = settingsRepository?.getActiveUserServerApiBearerToken()
+        if (bearerToken.isNullOrBlank()) {
+            return UpdateStatusResult(
+                localSaved = localSaved,
+                remoteSynced = false,
+                warning = if (localSaved) {
+                    "Status tersimpan lokal. Isi Server API Shared Secret dan login ulang untuk sync server."
+                } else {
+                    "Aksi order butuh auth. Isi Server API Shared Secret lalu login ulang dengan PIN aktif."
+                },
+            )
+        }
+
+        return runCatching {
+            apiClient.updateOrderStatus(
+                baseUrl = normalizedBaseUrl,
+                orderId = orderId,
+                status = targetStatus,
+                outletId = scopedOutletId,
+                bearerToken = bearerToken,
+            )
+        }.fold(
+            onSuccess = { updated ->
+                cacheRemoteOrder(updated)
+                UpdateStatusResult(
+                    localSaved = true,
+                    remoteSynced = true,
+                    warning = null,
+                )
+            },
+            onFailure = { error ->
+                UpdateStatusResult(
+                    localSaved = localSaved,
+                    remoteSynced = false,
+                    warning = buildString {
+                        if (localSaved) {
+                            append("Status tersimpan lokal, sync server gagal")
+                        } else {
+                            append("Gagal update status")
+                        }
+                        val message = error.message?.takeIf { it.isNotBlank() }
+                        if (message != null) {
+                            append(": ")
+                            append(message)
+                        }
+                    },
+                )
+            },
+        )
     }
 
     private fun cacheRemoteOrder(order: ServerOrderDto) {

@@ -38,6 +38,7 @@ import com.durrr.first.data.repo.MenuRepository
 import com.durrr.first.data.repo.SettingsRepository
 import com.durrr.first.domain.model.GroupItem
 import com.durrr.first.domain.model.ReceiptConfig
+import com.durrr.first.domain.service.IdGenerator
 import com.durrr.first.ui.design.AppCard
 import com.durrr.first.ui.design.AppInfoLine
 import com.durrr.first.ui.design.AppPageContainer
@@ -99,7 +100,25 @@ fun LocalFirstSetupScreen(
             .ifBlank { "10" }
         autoRounding = settingsRepository.getValue(SettingsRepository.KEY_AUTO_ROUNDING)
             .ifBlank { "0" }
+        ownerPin = settingsRepository.getValue(SettingsRepository.KEY_OWNER_PIN)
+            .filter(Char::isDigit)
+            .take(6)
+        ownerPinConfirm = ownerPin
+        cashierPin = settingsRepository.getValue(SettingsRepository.KEY_DEFAULT_CASHIER_PIN)
+            .filter(Char::isDigit)
+            .take(6)
+        cashierPinConfirm = cashierPin
     }
+
+    val validationError = setupValidationError(
+        storeName = storeName,
+        ownerName = ownerName,
+        ownerPin = ownerPin,
+        ownerPinConfirm = ownerPinConfirm,
+        cashierName = cashierName,
+        cashierPin = cashierPin,
+        cashierPinConfirm = cashierPinConfirm,
+    )
 
     AppPageContainer {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -396,6 +415,19 @@ fun LocalFirstSetupScreen(
                         AppInfoLine("Mode", "Local First")
                         AppInfoLine("Server", "Bisa dipasang nanti dari Pengaturan")
                         AppInfoLine("Kategori starter", starterCategoryDrafts.count { it.name.isNotBlank() }.toString())
+                        if (!validationError.isNullOrBlank()) {
+                            Text(
+                                text = validationError,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFB42318),
+                            )
+                        } else {
+                            Text(
+                                text = "Semua data valid. Tinggal simpan untuk mulai pakai app.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFF046C4E),
+                            )
+                        }
                         if (!message.isNullOrBlank()) {
                             Text(
                                 text = message.orEmpty(),
@@ -407,97 +439,74 @@ fun LocalFirstSetupScreen(
                 }
 
                 Button(
-                onClick = {
-                    if (saving) return@Button
-                    val finalStoreName = storeName.trim()
-                    val finalOutletId = outletId.trim().ifBlank { SettingsRepository.DEFAULT_OUTLET_ID }
-                    val finalOwnerName = ownerName.trim()
-                    val finalCashierName = cashierName.trim()
-                    val openingCash = openingCashText.toLongOrNull() ?: 0L
-                    val starterCategories = starterCategoryDrafts
-                        .map { it.name.trim() }
-                        .filter { it.isNotBlank() }
-                        .distinct()
-                    if (finalStoreName.isBlank()) {
-                        message = "Store name wajib diisi."
-                        return@Button
-                    }
-                    if (finalOwnerName.isBlank()) {
-                        message = "Owner name wajib diisi."
-                        return@Button
-                    }
-                    if (finalCashierName.isBlank()) {
-                        message = "Cashier / staff name wajib diisi."
-                        return@Button
-                    }
-                    if (!isValidSetupPin(ownerPin)) {
-                        message = "Owner PIN harus 4 sampai 6 digit angka."
-                        return@Button
-                    }
-                    if (ownerPin != ownerPinConfirm) {
-                        message = "Konfirmasi Owner PIN belum sama."
-                        return@Button
-                    }
-                    if (!isValidSetupPin(cashierPin)) {
-                        message = "Cashier / staff PIN harus 4 sampai 6 digit angka."
-                        return@Button
-                    }
-                    if (cashierPin != cashierPinConfirm) {
-                        message = "Konfirmasi Cashier / staff PIN belum sama."
-                        return@Button
-                    }
-                    val finalCashierId = cashierId.ifBlank {
-                        settingsRepository.ensureDefaultCashierId(finalCashierName)
-                    }
-
-                    saving = true
-                    message = null
-                    runCatching {
-                        settingsRepository.saveReceiptConfig(
-                            ReceiptConfig(
-                                storeName = finalStoreName,
-                                storeAddressOrPhone = storeAddress.trim(),
-                                headerLogoPath = settingsRepository.getValue(SettingsRepository.KEY_STORE_LOGO),
-                                watermarkLogoPath = settingsRepository.getValue(SettingsRepository.KEY_WATERMARK_LOGO),
-                                footerText = settingsRepository.getValue(SettingsRepository.KEY_FOOTER_TEXT)
-                                    .ifBlank { "Thank you" },
-                            ),
-                        )
-                        settingsRepository.upsert(SettingsRepository.KEY_OUTLET_ID, finalOutletId)
-                        settingsRepository.upsert(SettingsRepository.KEY_OWNER_NAME, finalOwnerName)
-                        settingsRepository.upsert(SettingsRepository.KEY_OWNER_PIN, ownerPin)
-                        settingsRepository.upsert(SettingsRepository.KEY_DEFAULT_CASHIER_ID, finalCashierId)
-                        settingsRepository.upsert(SettingsRepository.KEY_DEFAULT_CASHIER_NAME, finalCashierName)
-                        settingsRepository.upsert(SettingsRepository.KEY_DEFAULT_CASHIER_PIN, cashierPin)
-                        settingsRepository.upsert(SettingsRepository.KEY_AUTO_TAX_PERCENT, autoTaxPercent.ifBlank { "11" })
-                        settingsRepository.upsert(SettingsRepository.KEY_AUTO_SERVICE_PERCENT, autoServicePercent.ifBlank { "10" })
-                        settingsRepository.upsert(SettingsRepository.KEY_AUTO_ROUNDING, autoRounding.ifBlank { "0" })
-                        settingsRepository.upsert(SettingsRepository.KEY_SETUP_MODE, SettingsRepository.SETUP_MODE_LOCAL_FIRST)
-
-                        if (starterCategories.isNotEmpty() && menuRepository.getGroups(finalOutletId).isEmpty()) {
-                            starterGroups(finalOutletId, starterCategories).forEach {
-                                menuRepository.upsertGroup(it, finalOutletId)
-                            }
+                    onClick = {
+                        if (saving) return@Button
+                        if (!validationError.isNullOrBlank()) {
+                            message = validationError
+                            return@Button
+                        }
+                        val finalStoreName = storeName.trim()
+                        val finalOutletId = outletId.trim().ifBlank { SettingsRepository.DEFAULT_OUTLET_ID }
+                        val finalOwnerName = ownerName.trim()
+                        val finalCashierName = cashierName.trim()
+                        val openingCash = openingCashText.toLongOrNull() ?: 0L
+                        val starterCategories = starterCategoryDrafts
+                            .map { it.name.trim() }
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                        val finalCashierId = cashierId.ifBlank {
+                            settingsRepository.ensureDefaultCashierId(finalCashierName)
                         }
 
-                        if (openCashSessionNow && cashSessionRepository.getActiveSession(finalOutletId) == null) {
-                            cashSessionRepository.openSession(
-                                outletId = finalOutletId,
-                                openingCash = openingCash,
-                                userId = finalCashierName,
-                                openedAt = nowIso(),
+                        saving = true
+                        message = null
+                        runCatching {
+                            settingsRepository.saveReceiptConfig(
+                                ReceiptConfig(
+                                    storeName = finalStoreName,
+                                    storeAddressOrPhone = storeAddress.trim(),
+                                    headerLogoPath = settingsRepository.getValue(SettingsRepository.KEY_STORE_LOGO),
+                                    watermarkLogoPath = settingsRepository.getValue(SettingsRepository.KEY_WATERMARK_LOGO),
+                                    footerText = settingsRepository.getValue(SettingsRepository.KEY_FOOTER_TEXT)
+                                        .ifBlank { "Thank you" },
+                                ),
                             )
-                        }
+                            settingsRepository.upsert(SettingsRepository.KEY_OUTLET_ID, finalOutletId)
+                            settingsRepository.upsert(SettingsRepository.KEY_OWNER_NAME, finalOwnerName)
+                            settingsRepository.upsert(SettingsRepository.KEY_OWNER_PIN, ownerPin)
+                            settingsRepository.upsert(SettingsRepository.KEY_DEFAULT_CASHIER_ID, finalCashierId)
+                            settingsRepository.upsert(SettingsRepository.KEY_DEFAULT_CASHIER_NAME, finalCashierName)
+                            settingsRepository.upsert(SettingsRepository.KEY_DEFAULT_CASHIER_PIN, cashierPin)
+                            settingsRepository.upsert(SettingsRepository.KEY_AUTO_TAX_PERCENT, autoTaxPercent.ifBlank { "11" })
+                            settingsRepository.upsert(SettingsRepository.KEY_AUTO_SERVICE_PERCENT, autoServicePercent.ifBlank { "10" })
+                            settingsRepository.upsert(SettingsRepository.KEY_AUTO_ROUNDING, autoRounding.ifBlank { "0" })
+                            settingsRepository.upsert(SettingsRepository.KEY_SETUP_MODE, SettingsRepository.SETUP_MODE_LOCAL_FIRST)
 
-                        settingsRepository.markLocalSetupCompleted(true)
-                    }.onFailure {
-                        message = "Setup failed: ${it.message ?: "Unknown error"}"
-                    }.onSuccess {
-                        message = "Tablet siap dipakai."
-                        onComplete()
-                    }
-                    saving = false
-                },
+                            if (starterCategories.isNotEmpty() && menuRepository.getGroups(finalOutletId).isEmpty()) {
+                                starterGroups(finalOutletId, starterCategories).forEach {
+                                    menuRepository.upsertGroup(it, finalOutletId)
+                                }
+                            }
+
+                            if (openCashSessionNow && cashSessionRepository.getActiveSession(finalOutletId) == null) {
+                                cashSessionRepository.openSession(
+                                    outletId = finalOutletId,
+                                    openingCash = openingCash,
+                                    userId = finalCashierName,
+                                    openedAt = nowIso(),
+                                )
+                            }
+
+                            settingsRepository.markLocalSetupCompleted(true)
+                        }.onFailure {
+                            message = "Setup failed: ${it.message ?: "Unknown error"}"
+                        }.onSuccess {
+                            message = "Tablet siap dipakai."
+                            onComplete()
+                        }
+                        saving = false
+                    },
+                    enabled = !saving && validationError == null,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (saving) "Saving..." else "Save and Start Using App")
@@ -843,9 +852,15 @@ private fun starterGroups(
     outletId: String,
     names: List<String>,
 ): List<GroupItem> {
+    val usedIds = mutableListOf<String>()
     return names.mapIndexed { index, name ->
+        val id = IdGenerator.newCategoryId(
+            categoryName = name,
+            existingGroupIds = usedIds,
+        )
+        usedIds += id
         GroupItem(
-            id = "grp_setup_${index + 1}_${name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')}",
+            id = id,
             name = name,
             order = index + 1,
             outletId = outletId,
@@ -859,4 +874,23 @@ private fun defaultStarterCategoryNames(): List<String> {
 
 private fun isValidSetupPin(pin: String): Boolean {
     return pin.length in 4..6 && pin.all(Char::isDigit)
+}
+
+private fun setupValidationError(
+    storeName: String,
+    ownerName: String,
+    ownerPin: String,
+    ownerPinConfirm: String,
+    cashierName: String,
+    cashierPin: String,
+    cashierPinConfirm: String,
+): String? {
+    if (storeName.trim().isBlank()) return "Store name wajib diisi."
+    if (ownerName.trim().isBlank()) return "Owner name wajib diisi."
+    if (!isValidSetupPin(ownerPin)) return "Owner PIN harus 4 sampai 6 digit angka."
+    if (ownerPin != ownerPinConfirm) return "Konfirmasi Owner PIN belum sama."
+    if (cashierName.trim().isBlank()) return "Cashier / staff name wajib diisi."
+    if (!isValidSetupPin(cashierPin)) return "Cashier / staff PIN harus 4 sampai 6 digit angka."
+    if (cashierPin != cashierPinConfirm) return "Konfirmasi Cashier / staff PIN belum sama."
+    return null
 }

@@ -1,9 +1,13 @@
 package com.durrr.first
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,11 +15,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Badge
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
@@ -30,15 +39,24 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.consumeAllChanges
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import com.durrr.first.data.repo.SettingsRepository
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -63,9 +81,16 @@ import com.durrr.first.features.settings.presentation.SettingsScreen
 import com.durrr.first.features.stock.presentation.StockScreen
 import com.durrr.first.features.transaction.presentation.OrderCheckoutScreen
 import com.durrr.first.features.transaction.presentation.ReceiptPreviewScreen
+import com.durrr.first.features.transaction.presentation.TransactionHistoryScreen
 import com.durrr.first.ui.AppDependencies
 import com.durrr.first.ui.design.Dimens
+import com.durrr.first.ui.notification.AppNotification
+import com.durrr.first.ui.notification.AppNotificationLevel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private enum class MainRoute(val route: String, val title: String, val iconRes: Int) {
     RECAP("recap", "Dashboard", R.drawable.nav_dashboard),
@@ -84,9 +109,12 @@ private const val PRODUCT_EDITOR_ROUTE = "productEditor/{itemId}"
 private const val PRODUCT_CATEGORY_ROUTE = "productCategories"
 private const val MODIFIER_GROUP_ROUTE = "modifierGroups"
 private const val RECOMMENDATION_ROUTE = "recommendation"
+private const val TRANSACTION_HISTORY_ROUTE = "transactionHistory"
 
 private val SidebarBlue = Color(0xFF5262BE)
 private val SidebarActive = Color(0xFF21A5DF)
+private val NotificationWarning = Color(0xFFB7791F)
+private val NotificationError = Color(0xFFC53030)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,6 +130,7 @@ fun AndroidAppScaffold(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val currentDestinationRoute = currentDestination?.route
+    var notificationPanelOpen by remember { mutableStateOf(false) }
 
     val currentRoute = MainRoute.values().firstOrNull { it.route == currentDestinationRoute }
     val isMainRoute = currentRoute != null
@@ -119,6 +148,7 @@ fun AndroidAppScaffold(
         currentDestinationRoute == MODIFIER_GROUP_ROUTE -> "Modifier Group"
         currentDestinationRoute == PRODUCT_EDITOR_ROUTE -> if (currentEditorItemId == "new") "Tambah Barang" else "Edit Barang"
         currentDestinationRoute == RECOMMENDATION_ROUTE -> "Rekomendasi"
+        currentDestinationRoute == TRANSACTION_HISTORY_ROUTE -> "Riwayat Transaksi"
         else -> currentRoute?.title ?: "SuCash"
     }
 
@@ -174,12 +204,52 @@ fun AndroidAppScaffold(
                 )
             },
         ) { paddingValues ->
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
                     .background(MaterialTheme.colorScheme.background),
             ) {
+                val density = LocalDensity.current
+                val fabSizePx = with(density) { 46.dp.toPx() }
+                val edgePaddingPx = with(density) { 12.dp.toPx() }
+                val panelGapPx = with(density) { 10.dp.toPx() }
+                val panelWidthEstimatePx = with(density) { 320.dp.toPx() }
+                val panelHeightEstimatePx = with(density) { 360.dp.toPx() }
+                val contentWidthPx = constraints.maxWidth.toFloat()
+                val contentHeightPx = constraints.maxHeight.toFloat()
+                val minFabX = edgePaddingPx
+                val minFabY = edgePaddingPx
+                val maxFabX = (contentWidthPx - fabSizePx - edgePaddingPx).coerceAtLeast(minFabX)
+                val maxFabY = (contentHeightPx - fabSizePx - edgePaddingPx).coerceAtLeast(minFabY)
+                var notificationFabOffset by remember { mutableStateOf(Offset.Zero) }
+                var notificationFabInitialized by remember { mutableStateOf(false) }
+
+                LaunchedEffect(maxFabX, maxFabY, minFabX, minFabY) {
+                    if (!notificationFabInitialized) {
+                        notificationFabOffset = Offset(maxFabX, minFabY)
+                        notificationFabInitialized = true
+                    } else {
+                        notificationFabOffset = Offset(
+                            x = notificationFabOffset.x.coerceIn(minFabX, maxFabX),
+                            y = notificationFabOffset.y.coerceIn(minFabY, maxFabY),
+                        )
+                    }
+                }
+
+                val panelX = (
+                    notificationFabOffset.x + fabSizePx - panelWidthEstimatePx
+                    ).coerceIn(
+                    edgePaddingPx,
+                    (contentWidthPx - panelWidthEstimatePx - edgePaddingPx).coerceAtLeast(edgePaddingPx),
+                )
+                val panelYBelowFab = notificationFabOffset.y + fabSizePx + panelGapPx
+                val panelY = if (panelYBelowFab + panelHeightEstimatePx > contentHeightPx) {
+                    (notificationFabOffset.y - panelHeightEstimatePx - panelGapPx).coerceAtLeast(edgePaddingPx)
+                } else {
+                    panelYBelowFab
+                }
+
                 NavHost(
                     navController = navController,
                     startDestination = MainRoute.ORDERS.route,
@@ -189,6 +259,9 @@ fun AndroidAppScaffold(
                             orderRepository = dependencies.orderCacheRepository,
                             orderSyncRepository = dependencies.orderSyncRepository,
                             settingsRepository = dependencies.settingsRepository,
+                            onNotify = { title, message, level ->
+                                viewModel.pushNotification(title, message, level)
+                            },
                             onCreateWalkInOrder = { navController.navigate(ORDER_BUILDER_ROUTE) },
                         )
                     }
@@ -286,9 +359,13 @@ fun AndroidAppScaffold(
                             recapSyncRepository = dependencies.recapSyncRepository,
                             settingsRepository = dependencies.settingsRepository,
                             todayDate = dependencies.todayDate,
+                            onNotify = { title, message, level ->
+                                viewModel.pushNotification(title, message, level)
+                            },
                             onOpenCashFlow = { navController.navigate(CASHFLOW_ROUTE) },
                             onOpenStock = { navController.navigate(STOCK_ROUTE) },
                             onOpenCashClosing = { navController.navigate(CASH_CLOSING_ROUTE) },
+                            onOpenTransactionHistory = { navController.navigate(TRANSACTION_HISTORY_ROUTE) },
                         )
                     }
                     composable(MainRoute.SETTINGS.route) {
@@ -299,6 +376,9 @@ fun AndroidAppScaffold(
                             orderSyncRepository = dependencies.orderSyncRepository,
                             transaksiSyncRepository = dependencies.transaksiSyncRepository,
                             isOwnerSession = isOwner,
+                            onNotify = { title, message, level ->
+                                viewModel.pushNotification(title, message, level)
+                            },
                             onRequireLocalSetup = onRequireLocalSetup,
                             onLogout = onLogout,
                             onOpenCashFlow = { navController.navigate(CASHFLOW_ROUTE) },
@@ -331,6 +411,15 @@ fun AndroidAppScaffold(
                             nowIso = dependencies.nowIso,
                         )
                     }
+                    composable(TRANSACTION_HISTORY_ROUTE) {
+                        TransactionHistoryScreen(
+                            transaksiRepository = dependencies.transaksiRepository,
+                            settingsRepository = dependencies.settingsRepository,
+                            onOpenReceipt = { transaksiId ->
+                                navController.navigate("receiptPreview/$transaksiId")
+                            },
+                        )
+                    }
                     composable(
                         route = RECEIPT_PREVIEW_ROUTE,
                         arguments = listOf(navArgument("transaksiId") { type = NavType.StringType }),
@@ -359,6 +448,42 @@ fun AndroidAppScaffold(
                         }
                     }
                 }
+
+                NotificationFloatingButton(
+                    unreadCount = viewModel.unreadNotificationCount(),
+                    onClick = {
+                        notificationPanelOpen = !notificationPanelOpen
+                        if (notificationPanelOpen) {
+                            viewModel.markAllNotificationsRead()
+                        }
+                    },
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                x = notificationFabOffset.x.roundToInt(),
+                                y = notificationFabOffset.y.roundToInt(),
+                            )
+                        }
+                        .pointerInput(minFabX, maxFabX, minFabY, maxFabY) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consumeAllChanges()
+                                notificationFabOffset = Offset(
+                                    x = (notificationFabOffset.x + dragAmount.x).coerceIn(minFabX, maxFabX),
+                                    y = (notificationFabOffset.y + dragAmount.y).coerceIn(minFabY, maxFabY),
+                                )
+                            }
+                        },
+                )
+
+                if (notificationPanelOpen) {
+                    NotificationPanel(
+                        notifications = viewModel.notifications,
+                        onClear = { viewModel.clearNotifications() },
+                        onClose = { notificationPanelOpen = false },
+                        modifier = Modifier
+                            .offset { IntOffset(panelX.roundToInt(), panelY.roundToInt()) },
+                    )
+                }
             }
         }
     }
@@ -375,6 +500,160 @@ fun AndroidAppScaffold(
         },
         content = { appBody() },
     )
+}
+
+@Composable
+private fun NotificationFloatingButton(
+    unreadCount: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        tonalElevation = 4.dp,
+        shadowElevation = 6.dp,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier.size(46.dp),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_notifications_material),
+                contentDescription = "Notifikasi",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+            if (unreadCount > 0) {
+                Badge(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 2.dp, end = 2.dp),
+                ) {
+                    Text(
+                        text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationPanel(
+    notifications: List<AppNotification>,
+    onClear: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 4.dp,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier
+            .widthIn(min = 260.dp, max = 360.dp)
+            .fillMaxWidth(0.9f),
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Notifikasi",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Clear",
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(vertical = 2.dp)
+                            .clickable(onClick = onClear),
+                    )
+                    Text(
+                        text = "Close",
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(vertical = 2.dp)
+                            .clickable(onClick = onClose),
+                    )
+                }
+            }
+
+            if (notifications.isEmpty()) {
+                Text(
+                    text = "Belum ada notifikasi.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .height(300.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    notifications.forEach { notification ->
+                        NotificationItem(notification = notification)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationItem(notification: AppNotification) {
+    val levelColor = when (notification.level) {
+        AppNotificationLevel.INFO -> MaterialTheme.colorScheme.primary
+        AppNotificationLevel.WARNING -> NotificationWarning
+        AppNotificationLevel.ERROR -> NotificationError
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = notification.title,
+                fontWeight = FontWeight.SemiBold,
+                color = levelColor,
+            )
+            Text(
+                text = notificationTimeLabel(notification.createdAtMillis),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = notification.message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+private fun notificationTimeLabel(millis: Long): String {
+    return runCatching {
+        val formatter = SimpleDateFormat("HH:mm", Locale.US)
+        formatter.format(Date(millis))
+    }.getOrElse { "-" }
 }
 
 @Composable
@@ -456,6 +735,13 @@ private fun SidebarContent(
                 iconRes = R.drawable.nav_orders,
                 selected = currentDestination?.hierarchy?.any { it.route == MainRoute.ORDERS.route } == true,
                 onClick = { onNavigateMain(MainRoute.ORDERS) },
+            )
+            SidebarEntry(
+                label = "Riwayat",
+                iconRes = R.drawable.nav_orders,
+                selected = currentDestinationRoute == TRANSACTION_HISTORY_ROUTE ||
+                    currentDestinationRoute?.startsWith("receiptPreview/") == true,
+                onClick = { onNavigateExtra(TRANSACTION_HISTORY_ROUTE) },
             )
             SidebarEntry(
                 label = "Produk",

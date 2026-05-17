@@ -14,6 +14,41 @@ class TransaksiRepository(
     private val totalsCalculator: TotalsCalculator = TotalsCalculator(),
     private val stockRepository: StockRepository = StockRepository(db),
 ) {
+    fun listHistory(
+        outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
+        query: String = "",
+        limit: Int = 200,
+    ): List<Transaksi> {
+        val keyword = query.trim().lowercase()
+        return db.tokoQueries.selectAllTransaksi(outletId)
+            .executeAsList()
+            .asSequence()
+            .map { row ->
+                Transaksi(
+                    id = row.id_transaksi,
+                    createdAt = row.c_date ?: "",
+                    meja = row.meja,
+                    cashierId = row.c_by,
+                    cashierName = row.c,
+                    discountPlus = parseLong(row.diskon_plus),
+                    tax = parseLong(row.pajak),
+                    serviceCharge = parseLong(row.service_charge),
+                    rounding = parseLong(row.round_harga),
+                    total = parseLong(row.rekap_harga_total),
+                    outletId = row.outlet_id,
+                )
+            }
+            .filter { transaksi ->
+                keyword.isBlank() ||
+                    transaksi.id.lowercase().contains(keyword) ||
+                    transaksi.meja.orEmpty().lowercase().contains(keyword) ||
+                    transaksi.cashierName.orEmpty().lowercase().contains(keyword)
+            }
+            .sortedByDescending { it.createdAt }
+            .take(limit.coerceAtLeast(1))
+            .toList()
+    }
+
     fun ensureOrderRecordedAsTransaksi(
         order: OrderHeader,
         items: List<OrderItem>,

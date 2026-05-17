@@ -3,6 +3,7 @@ package com.durrr.first.data.repo
 import com.durrr.first.TokoDatabase
 import com.durrr.first.domain.model.ReceiptConfig
 import com.durrr.first.domain.service.IdGenerator
+import com.durrr.first.network.security.OpaqueBearerTokenCodec
 
 class SettingsRepository(private val db: TokoDatabase) {
     data class LocalAccountSession(
@@ -71,6 +72,8 @@ class SettingsRepository(private val db: TokoDatabase) {
     fun getDefaultCashierName(): String? = getOptionalValue(KEY_DEFAULT_CASHIER_NAME)
 
     fun getOwnerName(): String? = getOptionalValue(KEY_OWNER_NAME)
+
+    fun getServerApiSharedSecret(): String? = getOptionalValue(KEY_SERVER_API_SHARED_SECRET)
 
     fun ensureDefaultCashierId(existingName: String? = null): String {
         val existing = getDefaultCashierId()
@@ -153,6 +156,26 @@ class SettingsRepository(private val db: TokoDatabase) {
         )
     }
 
+    fun resolveServerApiBearerToken(role: String?): String? {
+        val normalizedRole = role?.trim()?.uppercase()
+        if (normalizedRole != ROLE_OWNER && normalizedRole != ROLE_CASHIER) return null
+        val secret = getServerApiSharedSecret() ?: return null
+        val pin = when (normalizedRole) {
+            ROLE_OWNER -> getOptionalValue(KEY_OWNER_PIN)
+            ROLE_CASHIER -> getOptionalValue(KEY_DEFAULT_CASHIER_PIN)
+            else -> null
+        } ?: return null
+        return OpaqueBearerTokenCodec.issue(
+            secret = secret,
+            role = normalizedRole,
+            pin = pin,
+        )
+    }
+
+    fun getActiveUserServerApiBearerToken(): String? {
+        return resolveServerApiBearerToken(getActiveUserSession()?.role)
+    }
+
     fun resolveCurrentCashierId(): String {
         return getActiveUserSession()?.userId
             ?: ensureDefaultCashierId(getDefaultCashierName())
@@ -225,6 +248,7 @@ class SettingsRepository(private val db: TokoDatabase) {
         const val KEY_ACTIVE_USER_ROLE = "active_user_role"
         const val KEY_ACTIVE_USER_ID = "active_user_id"
         const val KEY_ACTIVE_USER_NAME = "active_user_name"
+        const val KEY_SERVER_API_SHARED_SECRET = "server_api_shared_secret"
         const val DEFAULT_OUTLET_ID = "default"
         const val SETUP_MODE_LOCAL_FIRST = "LOCAL_FIRST"
         const val ROLE_OWNER = "OWNER"

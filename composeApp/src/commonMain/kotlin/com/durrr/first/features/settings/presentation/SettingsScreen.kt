@@ -1,14 +1,20 @@
 package com.durrr.first.features.settings.presentation
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,8 +23,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import com.durrr.first.data.repo.MenuSyncRepository
 import com.durrr.first.data.repo.OrderSyncRepository
 import com.durrr.first.data.repo.SettingsRepository
@@ -29,6 +37,7 @@ import com.durrr.first.ui.design.AppInfoLine
 import com.durrr.first.ui.design.AppSectionHeader
 import com.durrr.first.ui.design.AppTheme
 import com.durrr.first.ui.design.Dimens
+import com.durrr.first.ui.notification.AppNotificationLevel
 import kotlinx.coroutines.launch
 
 @Composable
@@ -39,6 +48,7 @@ fun SettingsScreen(
     orderSyncRepository: OrderSyncRepository? = null,
     transaksiSyncRepository: TransaksiSyncRepository? = null,
     isOwnerSession: Boolean = false,
+    onNotify: (title: String, message: String, level: AppNotificationLevel) -> Unit = { _, _, _ -> },
     onRequireLocalSetup: () -> Unit = {},
     onLogout: () -> Unit = {},
     onOpenCashFlow: () -> Unit = {},
@@ -52,12 +62,14 @@ fun SettingsScreen(
     var footerText by remember { mutableStateOf("") }
     var serverBaseUrl by remember { mutableStateOf("") }
     var outletId by remember { mutableStateOf("") }
+    var serverApiSharedSecret by remember { mutableStateOf("") }
     var autoTaxPercent by remember { mutableStateOf("11") }
     var autoServicePercent by remember { mutableStateOf("10") }
     var autoRounding by remember { mutableStateOf("0") }
     var savedMessage by remember { mutableStateOf<String?>(null) }
-    var syncMessage by remember { mutableStateOf<String?>(null) }
-    var syncBusy by remember { mutableStateOf(false) }
+    var syncBusyAction by remember { mutableStateOf<String?>(null) }
+    val syncBusy = syncBusyAction != null
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -69,6 +81,7 @@ fun SettingsScreen(
         footerText = config.footerText
         serverBaseUrl = settingsRepository.getValue(SettingsRepository.KEY_SERVER_BASE_URL)
         outletId = settingsRepository.getValue(SettingsRepository.KEY_OUTLET_ID)
+        serverApiSharedSecret = settingsRepository.getValue(SettingsRepository.KEY_SERVER_API_SHARED_SECRET)
         autoTaxPercent = settingsRepository
             .getValue(SettingsRepository.KEY_AUTO_TAX_PERCENT)
             .ifBlank { "11" }
@@ -80,12 +93,32 @@ fun SettingsScreen(
             .ifBlank { "0" }
     }
 
-    Column(
-        modifier = Modifier
-            .padding(Dimens.md)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(Dimens.sm),
+    suspend fun showSyncNotification(message: String?) {
+        val text = message.orEmpty().trim()
+        if (text.isNotBlank()) {
+            onNotify("Settings", text, notificationLevelForMessage(text))
+            snackbarHostState.showSnackbar(text)
+        }
+    }
+
+    suspend fun runSyncAction(actionId: String, block: suspend () -> String): Boolean {
+        syncBusyAction = actionId
+        val result = runCatching { block() }
+            .onSuccess { showSyncNotification(it) }
+            .onFailure { showSyncNotification(it.message ?: "Unknown error") }
+        syncBusyAction = null
+        return result.isSuccess
+    }
+
+    Box(
+        modifier = Modifier.fillMaxSize(),
     ) {
+        Column(
+            modifier = Modifier
+                .padding(Dimens.md)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Dimens.sm),
+        ) {
         fun currentBaseUrlOrNull(): String? = serverBaseUrl.trim().ifBlank { null }
         fun requireBaseUrl(): String = currentBaseUrlOrNull() ?: error("Set Server Base URL first in Settings.")
         fun currentOutletId(): String = outletId.trim().ifBlank { SettingsRepository.DEFAULT_OUTLET_ID }
@@ -226,6 +259,13 @@ fun SettingsScreen(
                     label = { Text("Outlet ID (Optional)") },
                 )
                 OutlinedTextField(
+                    value = serverApiSharedSecret,
+                    onValueChange = { serverApiSharedSecret = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Server API Shared Secret") },
+                    placeholder = { Text("Same as SUCASH_API_SHARED_SECRET on server") },
+                )
+                OutlinedTextField(
                     value = autoTaxPercent,
                     onValueChange = { autoTaxPercent = it.filter(Char::isDigit) },
                     modifier = Modifier.fillMaxWidth(),
@@ -264,6 +304,10 @@ fun SettingsScreen(
                             SettingsRepository.KEY_AUTO_TAX_PERCENT,
                             autoTaxPercent.ifBlank { "11" },
                         )
+                        val sharedSecretSaved = settingsRepository.upsert(
+                            SettingsRepository.KEY_SERVER_API_SHARED_SECRET,
+                            serverApiSharedSecret.trim(),
+                        )
                         val serviceSaved = settingsRepository.upsert(
                             SettingsRepository.KEY_AUTO_SERVICE_PERCENT,
                             autoServicePercent.ifBlank { "10" },
@@ -272,7 +316,14 @@ fun SettingsScreen(
                             SettingsRepository.KEY_AUTO_ROUNDING,
                             autoRounding.ifBlank { "0" },
                         )
-                        savedMessage = if (baseUrlSaved && outletSaved && taxSaved && serviceSaved && roundingSaved) {
+                        savedMessage = if (
+                            baseUrlSaved &&
+                            outletSaved &&
+                            taxSaved &&
+                            sharedSecretSaved &&
+                            serviceSaved &&
+                            roundingSaved
+                        ) {
                             "Saved server settings"
                         } else {
                             "Failed to save server settings"
@@ -284,7 +335,7 @@ fun SettingsScreen(
                     Text("Save Connectivity Settings")
                 }
                 Text(
-                    text = "Leave blank for local-only mode. If you pair a server later, Android emulator uses 10.0.2.2 for localhost.",
+                    text = "Leave base URL blank for local-only mode. For protected API writes, set one shared secret. Bearer token is derived from active role + PIN.",
                     style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                 )
             }
@@ -297,9 +348,7 @@ fun SettingsScreen(
                     Button(
                         onClick = {
                             scope.launch {
-                                syncBusy = true
-                                syncMessage = null
-                                runCatching {
+                                runSyncAction("sync_all") {
                                     val baseUrl = requireBaseUrl()
                                     val results = mutableListOf<String>()
                                     transaksiSyncRepository?.let {
@@ -321,59 +370,56 @@ fun SettingsScreen(
                                         results += "orders_pull:$pulledOrders"
                                     }
                                     "Sync all done (${results.joinToString(", ")})"
-                                }.onFailure {
-                                    syncMessage = "Sync failed: ${it.message ?: "Unknown error"}"
-                                }.onSuccess {
-                                    syncMessage = it
                                 }
-                                syncBusy = false
                             }
                         },
                         enabled = !syncBusy && hasServerConfigured,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (syncBusy) "Syncing..." else "Sync All Now")
+                        ActionButtonLabel(
+                            label = "Sync All Now",
+                            loadingLabel = "Syncing...",
+                            loading = syncBusyAction == "sync_all",
+                        )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(Dimens.xs)) {
                         if (orderSyncRepository != null) {
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncBusy = true
-                                        syncMessage = null
-                                        runCatching {
+                                        runSyncAction("pull_orders") {
                                             val pulled = orderSyncRepository.pullOrders(requireBaseUrl(), currentOutletId())
                                             "Pulled $pulled order(s)"
-                                        }.onFailure {
-                                            syncMessage = "Order sync failed: ${it.message ?: "Unknown error"}"
-                                        }.onSuccess {
-                                            syncMessage = it
                                         }
-                                        syncBusy = false
                                     }
                                 },
                                 enabled = !syncBusy && hasServerConfigured,
-                            ) { Text("Pull Orders") }
+                            ) {
+                                ActionButtonLabel(
+                                    label = "Pull Orders",
+                                    loadingLabel = "Pulling...",
+                                    loading = syncBusyAction == "pull_orders",
+                                )
+                            }
                         }
                         if (transaksiSyncRepository != null) {
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncBusy = true
-                                        syncMessage = null
-                                        runCatching {
+                                        runSyncAction("flush_transaksi") {
                                             val flushed = transaksiSyncRepository.flushPending(requireBaseUrl(), currentOutletId())
                                             "Flushed $flushed transaksi event(s)"
-                                        }.onFailure {
-                                            syncMessage = "Transaksi sync failed: ${it.message ?: "Unknown error"}"
-                                        }.onSuccess {
-                                            syncMessage = it
                                         }
-                                        syncBusy = false
                                     }
                                 },
                                 enabled = !syncBusy && hasServerConfigured,
-                            ) { Text("Flush Transaksi") }
+                            ) {
+                                ActionButtonLabel(
+                                    label = "Flush Transaksi",
+                                    loadingLabel = "Flushing...",
+                                    loading = syncBusyAction == "flush_transaksi",
+                                )
+                            }
                         }
                     }
                     if (menuSyncRepository != null) {
@@ -381,40 +427,38 @@ fun SettingsScreen(
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncBusy = true
-                                        syncMessage = null
-                                        runCatching {
+                                        runSyncAction("pull_menu") {
                                             val pulled = menuSyncRepository.pullFromServer(requireBaseUrl(), currentOutletId())
                                             "Pulled $pulled menu item(s)"
-                                        }.onFailure {
-                                            syncMessage = "Menu pull failed: ${it.message ?: "Unknown error"}"
-                                        }.onSuccess {
-                                            syncMessage = it
                                         }
-                                        syncBusy = false
                                     }
                                 },
                                 enabled = !syncBusy && hasServerConfigured,
-                            ) { Text("Pull Menu") }
+                            ) {
+                                ActionButtonLabel(
+                                    label = "Pull Menu",
+                                    loadingLabel = "Pulling...",
+                                    loading = syncBusyAction == "pull_menu",
+                                )
+                            }
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncBusy = true
-                                        syncMessage = null
-                                        runCatching {
+                                        runSyncAction("push_menu") {
                                             requireOwnerAccessOrFail()
                                             val pushed = menuSyncRepository.pushToServer(requireBaseUrl(), currentOutletId())
                                             "Pushed $pushed menu item(s)"
-                                        }.onFailure {
-                                            syncMessage = "Menu push failed: ${it.message ?: "Unknown error"}"
-                                        }.onSuccess {
-                                            syncMessage = it
                                         }
-                                        syncBusy = false
                                     }
                                 },
                                 enabled = !syncBusy && hasServerConfigured && ownerAccess,
-                            ) { Text("Push Menu") }
+                            ) {
+                                ActionButtonLabel(
+                                    label = "Push Menu",
+                                    loadingLabel = "Pushing...",
+                                    loading = syncBusyAction == "push_menu",
+                                )
+                            }
                         }
                     }
                     if (menuSyncRepository != null) {
@@ -422,9 +466,7 @@ fun SettingsScreen(
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncBusy = true
-                                        syncMessage = null
-                                        runCatching {
+                                        runSyncAction("force_align") {
                                             requireOwnerAccessOrFail()
                                             val baseUrl = requireBaseUrl()
                                             val outlet = currentOutletId()
@@ -433,63 +475,64 @@ fun SettingsScreen(
                                             val pulled = menuSyncRepository.pullFromServer(baseUrl, outlet)
                                             val pulledOrders = orderSyncRepository?.pullOrders(baseUrl, outlet) ?: 0
                                             "Aligned data (trx_flush:$flushed, menu_push:$pushed, menu_pull:$pulled, orders_pull:$pulledOrders)"
-                                        }.onFailure {
-                                            syncMessage = "Align failed: ${it.message ?: "Unknown error"}"
-                                        }.onSuccess {
-                                            syncMessage = it
                                         }
-                                        syncBusy = false
                                     }
                                 },
                                 enabled = !syncBusy && hasServerConfigured && ownerAccess,
                                 modifier = Modifier.weight(1f),
-                            ) { Text("Force Align Data") }
+                            ) {
+                                ActionButtonLabel(
+                                    label = "Force Align Data",
+                                    loadingLabel = "Aligning...",
+                                    loading = syncBusyAction == "force_align",
+                                )
+                            }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(Dimens.xs)) {
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncBusy = true
-                                        syncMessage = null
-                                        runCatching {
+                                        val success = runSyncAction("reset_local") {
                                             requireOwnerAccessOrFail()
                                             val outletBeforeReset = currentOutletId()
                                             settingsRepository.resetAllLocal(outletBeforeReset)
                                             "Local reset complete. Returning to setup."
-                                        }.onFailure {
-                                            syncMessage = "Local reset failed: ${it.message ?: "Unknown error"}"
-                                        }.onSuccess {
-                                            syncMessage = it
+                                        }
+                                        if (success) {
                                             onRequireLocalSetup()
                                         }
-                                        syncBusy = false
                                     }
                                 },
                                 enabled = !syncBusy && ownerAccess,
                                 modifier = Modifier.weight(1f),
-                            ) { Text("Reset Local Data") }
+                            ) {
+                                ActionButtonLabel(
+                                    label = "Reset Local Data",
+                                    loadingLabel = "Resetting...",
+                                    loading = syncBusyAction == "reset_local",
+                                )
+                            }
                             Button(
                                 onClick = {
                                     scope.launch {
-                                        syncBusy = true
-                                        syncMessage = null
-                                        runCatching {
+                                        runSyncAction("reset_server") {
                                             requireOwnerAccessOrFail()
                                             val baseUrl = requireBaseUrl()
                                             val outletBeforeReset = currentOutletId()
                                             menuSyncRepository.resetServerAllData(baseUrl, outletBeforeReset)
                                             "Server reset complete."
-                                        }.onFailure {
-                                            syncMessage = "Server reset failed: ${it.message ?: "Unknown error"}"
-                                        }.onSuccess {
-                                            syncMessage = it
                                         }
-                                        syncBusy = false
                                     }
                                 },
                                 enabled = !syncBusy && hasServerConfigured && ownerAccess,
                                 modifier = Modifier.weight(1f),
-                            ) { Text("Reset Server Data") }
+                            ) {
+                                ActionButtonLabel(
+                                    label = "Reset Server Data",
+                                    loadingLabel = "Resetting...",
+                                    loading = syncBusyAction == "reset_server",
+                                )
+                            }
                         }
                     }
                     if (!hasServerConfigured) {
@@ -505,9 +548,6 @@ fun SettingsScreen(
                             style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                    if (!syncMessage.isNullOrBlank()) {
-                        Text(syncMessage.orEmpty())
                     }
                 }
             }
@@ -533,6 +573,44 @@ fun SettingsScreen(
                 Text("Cash Closing")
             }
         }
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(Dimens.md),
+        )
+    }
+}
+
+private fun notificationLevelForMessage(message: String): AppNotificationLevel {
+    val value = message.lowercase()
+    return when {
+        "failed" in value || "error" in value || "gagal" in value -> AppNotificationLevel.ERROR
+        "warning" in value || "timeout" in value || "offline" in value || "local" in value -> AppNotificationLevel.WARNING
+        else -> AppNotificationLevel.INFO
+    }
+}
+
+@Composable
+private fun ActionButtonLabel(
+    label: String,
+    loading: Boolean,
+    loadingLabel: String = "Loading...",
+) {
+    if (loading) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Dimens.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+            )
+            Text(loadingLabel)
+        }
+    } else {
+        Text(label)
     }
 }
 

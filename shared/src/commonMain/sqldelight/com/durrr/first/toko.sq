@@ -635,8 +635,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 selectAllItems:
 SELECT * FROM toko_item
-WHERE outlet_id = ?
-  AND (is_delete IS NULL OR is_delete = '0');
+WHERE outlet_id = ?;
 
 selectAllGroups:
 SELECT * FROM toko_group_item
@@ -667,6 +666,42 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 softDeleteItem:
 UPDATE toko_item
 SET is_delete = '1'
+WHERE id_item = ?
+  AND outlet_id = ?;
+
+reactivateItem:
+UPDATE toko_item
+SET is_delete = '0'
+WHERE id_item = ?
+  AND outlet_id = ?;
+
+clearTransaksiDetailItemReferenceByItem:
+UPDATE toko_transaksi_detail
+SET id_item = NULL
+WHERE id_item = ?;
+
+clearOrderItemReferenceByItem:
+UPDATE order_item
+SET id_item = NULL
+WHERE id_item = ?;
+
+deleteStockLedgerByItem:
+DELETE FROM stock_ledger
+WHERE item_id = ?
+  AND outlet_id = ?;
+
+deleteStockThresholdByItem:
+DELETE FROM stock_threshold
+WHERE item_id = ?
+  AND outlet_id = ?;
+
+deleteStockBalanceByItem:
+DELETE FROM stock_item_balance
+WHERE item_id = ?
+  AND outlet_id = ?;
+
+hardDeleteItem:
+DELETE FROM toko_item
 WHERE id_item = ?
   AND outlet_id = ?;
 

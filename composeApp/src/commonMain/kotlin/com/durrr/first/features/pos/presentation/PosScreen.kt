@@ -85,7 +85,7 @@ fun PosScreen(
     }
 
     fun refreshMenu() {
-        menuItems = menuRepository.getItems(currentOutletId())
+        menuItems = menuRepository.getItems(currentOutletId()).filter { it.isActive }
     }
 
     fun currentCashierId(): String = settingsRepository.resolveCurrentCashierId()

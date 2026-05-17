@@ -60,14 +60,22 @@ fun rememberAppDependencies(
             orderCacheRepository = orderRepository,
             apiClient = apiClient,
             transaksiRepository = transaksiRepository,
+            settingsRepository = settingsRepository,
             nowIso = nowIso,
         )
     }
-    val menuSyncRepository = remember { MenuSyncRepository(menuRepository, apiClient) }
+    val menuSyncRepository = remember {
+        MenuSyncRepository(
+            menuRepository = menuRepository,
+            apiClient = apiClient,
+            settingsRepository = settingsRepository,
+        )
+    }
     val transaksiSyncRepository = remember {
         TransaksiSyncRepository(
             syncRepository = syncRepository,
             apiClient = apiClient,
+            settingsRepository = settingsRepository,
             nowIso = nowIso,
         )
     }

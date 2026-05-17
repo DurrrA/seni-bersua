@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 class TransaksiSyncRepository(
     private val syncRepository: SyncRepository,
     private val apiClient: ServerApiClient,
+    private val settingsRepository: SettingsRepository? = null,
     private val nowIso: () -> String,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
@@ -57,7 +58,11 @@ class TransaksiSyncRepository(
             },
             outletId = outletId,
         )
-        val response = apiClient.syncTransactions(baseUrl, request)
+        val response = apiClient.syncTransactions(
+            baseUrl = baseUrl,
+            request = request,
+            bearerToken = settingsRepository?.getActiveUserServerApiBearerToken(),
+        )
         val sentAt = nowIso()
         val acceptedIds = if (response.acks.isNotEmpty()) {
             response.acks.filter { it.status.equals("ACCEPTED", ignoreCase = true) }.map { it.eventId }

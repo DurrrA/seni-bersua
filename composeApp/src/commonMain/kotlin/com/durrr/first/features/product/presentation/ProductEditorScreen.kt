@@ -159,22 +159,34 @@ fun ProductEditorScreen(
             return
         }
 
+        val outletId = currentOutletId()
+        val existingItems = repo.getItems(outletId)
+        val selectedGroupName = groups.firstOrNull { it.id == selectedGroupId }?.name
+        val resolvedItemId = itemId ?: IdGenerator.newCatalogItemId(
+            itemName = name,
+            categoryName = selectedGroupName,
+            existingItemIds = existingItems.map { it.id },
+            existingIdsInCategory = existingItems
+                .filter { it.groupId == selectedGroupId }
+                .map { it.id },
+        )
+
         val model = Item(
-            id = itemId ?: IdGenerator.newId("item_"),
+            id = resolvedItemId,
             name = name,
             price = price,
             groupId = selectedGroupId,
             code = itemCode.trim().ifBlank { null },
             imageUrl = itemImageUrl.trim().ifBlank { null },
             isActive = itemActive,
-            outletId = currentOutletId(),
+            outletId = outletId,
         )
-        repo.upsertItem(model, currentOutletId())
-        repo.assignModifierGroupsToItem(model.id, selectedModifierGroupIds.toList(), currentOutletId())
+        repo.upsertItem(model, outletId)
+        repo.assignModifierGroupsToItem(model.id, selectedModifierGroupIds.toList(), outletId)
         scope.launch {
             val baseUrl = serverBaseUrl()
             if (baseUrl != null) runCatching {
-                menuSyncRepository.pushToServer(baseUrl, currentOutletId())
+                menuSyncRepository.pushToServer(baseUrl, outletId)
             }
         }
         onSaved()

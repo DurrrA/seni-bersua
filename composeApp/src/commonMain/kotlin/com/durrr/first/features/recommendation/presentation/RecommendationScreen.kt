@@ -18,6 +18,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
@@ -50,6 +51,7 @@ import com.durrr.first.ui.design.AppCard
 import com.durrr.first.ui.design.AppEmptyState
 import com.durrr.first.ui.design.AppInfoLine
 import com.durrr.first.ui.design.AppSectionHeader
+import com.durrr.first.ui.design.AppStatusPill
 import kotlinx.coroutines.launch
 
 private enum class RecommendationTab(val title: String) {
@@ -79,6 +81,7 @@ fun RecommendationScreen(
     val bundles = BundleStore.bundles
     val promos = PromoStore.promos
     var menuItems by remember { mutableStateOf(emptyList<Item>()) }
+    var groupNameById by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var selectedTab by remember { mutableStateOf(RecommendationTab.BUNDLE) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -87,6 +90,7 @@ fun RecommendationScreen(
     var bundlePrice by remember { mutableStateOf("") }
     var bundleStartDate by remember { mutableStateOf("") }
     var bundleEndDate by remember { mutableStateOf("") }
+    var editingBundleId by remember { mutableStateOf<String?>(null) }
     val selectedBundleQty = remember { mutableStateMapOf<String, Int>() }
 
     var promoName by remember { mutableStateOf("") }
@@ -117,13 +121,23 @@ fun RecommendationScreen(
     }
 
     fun syncDraftsWithMenu() {
-        val bundleItems = menuItems.filter { it.groupId == BUNDLE_GROUP_ID || it.id.startsWith("menu_bundle_") }
-        val promoItems = menuItems.filter { it.groupId == PROMO_GROUP_ID || it.id.startsWith("menu_promo_") }
+        val bundleNameKeys = bundles.map { normalizeNameKey(it.name) }.toSet()
+        val promoNameKeys = promos.map { normalizeNameKey(it.name) }.toSet()
+        val bundleItems = menuItems.filter { item ->
+            val groupName = item.groupId?.let(groupNameById::get)
+            isBundleMenuItem(item, groupName, bundleNameKeys)
+        }
+        val promoItems = menuItems.filter { item ->
+            val groupName = item.groupId?.let(groupNameById::get)
+            isPromoMenuItem(item, groupName, promoNameKeys)
+        }
 
         val existingBundleById = bundles.associateBy { it.id }
+        val existingBundleByName = bundles.associateBy { normalizeNameKey(it.name) }
         val syncedBundles = bundleItems.sortedBy { it.name.lowercase() }.map { item ->
             val bundleId = extractBundleId(item.id)
             val existing = existingBundleById[bundleId]
+                ?: existingBundleByName[normalizeNameKey(item.name)]
             if (existing != null) {
                 existing.copy(name = item.name, price = item.price)
             } else {
@@ -137,13 +151,17 @@ fun RecommendationScreen(
                 )
             }
         }
-        bundles.clear()
-        bundles.addAll(syncedBundles)
+        if (syncedBundles.isNotEmpty() || bundles.isEmpty()) {
+            bundles.clear()
+            bundles.addAll(syncedBundles)
+        }
 
         val existingPromoById = promos.associateBy { it.id }
+        val existingPromoByName = promos.associateBy { normalizeNameKey(it.name) }
         val syncedPromos = promoItems.sortedBy { it.name.lowercase() }.map { item ->
             val promoId = extractPromoId(item.id)
             val existing = existingPromoById[promoId]
+                ?: existingPromoByName[normalizeNameKey(item.name)]
             if (existing != null) {
                 existing.copy(name = item.name, promoPrice = item.price)
             } else {
@@ -159,8 +177,10 @@ fun RecommendationScreen(
                 )
             }
         }
-        promos.clear()
-        promos.addAll(syncedPromos)
+        if (syncedPromos.isNotEmpty() || promos.isEmpty()) {
+            promos.clear()
+            promos.addAll(syncedPromos)
+        }
     }
 
     fun syncMenuAfterChange(successPrefix: String) {
@@ -205,6 +225,105 @@ fun RecommendationScreen(
             .getItems(currentOutletId())
             .filter { it.isActive }
             .sortedBy { it.name.lowercase() }
+        groupNameById = menuRepository
+            .getGroups(currentOutletId())
+            .associate { it.id to it.name }
+    }
+
+    fun resetBundleEditor() {
+        editingBundleId = null
+        bundleName = ""
+        bundlePrice = ""
+        bundleStartDate = ""
+        bundleEndDate = ""
+        selectedBundleQty.clear()
+    }
+
+    fun startEditBundle(bundle: BundleDraft) {
+        editingBundleId = bundle.id
+        bundleName = bundle.name
+        bundlePrice = bundle.price.toString()
+        bundleStartDate = bundle.startDate
+        bundleEndDate = bundle.endDate
+        selectedBundleQty.clear()
+        bundle.items.forEach { item ->
+            selectedBundleQty[item.itemId] = item.qty.coerceAtLeast(1)
+        }
+    }
+
+    fun deleteBundle(bundle: BundleDraft) {
+        val outletId = currentOutletId()
+        val deletedMenuItemId = bundleMenuItemId(bundle.id)
+        bundles.remove(bundle)
+        menuRepository.hardDeleteItem(
+            itemId = deletedMenuItemId,
+            outletId = outletId,
+        )
+        if (editingBundleId == bundle.id) {
+            resetBundleEditor()
+        }
+        refreshMenu()
+        syncDraftsWithMenu()
+        persistRecommendationDrafts()
+        val baseUrl = settingsRepository.getOptionalServerBaseUrl()
+        if (baseUrl.isNullOrBlank()) {
+            message = "Bundle dihapus permanen di device ini."
+            return
+        }
+        scope.launch {
+            runCatching {
+                menuSyncRepository.deleteItemFromServer(
+                    baseUrl = baseUrl,
+                    itemId = deletedMenuItemId,
+                    outletId = outletId,
+                )
+                val pulled = menuSyncRepository.pullFromServer(baseUrl, outletId)
+                refreshMenu()
+                syncDraftsWithMenu()
+                persistRecommendationDrafts()
+                "Bundle dihapus permanen. Sync server sukses (pull $pulled item)."
+            }.onSuccess { syncMessage ->
+                message = syncMessage
+            }.onFailure { error ->
+                message = "Bundle dihapus lokal, tapi hapus server gagal: ${error.message ?: "Unknown error"}"
+            }
+        }
+    }
+
+    fun deletePromo(promo: PromoDraft) {
+        val outletId = currentOutletId()
+        val deletedMenuItemId = promoMenuItemId(promo.id)
+        promos.remove(promo)
+        menuRepository.hardDeleteItem(
+            itemId = deletedMenuItemId,
+            outletId = outletId,
+        )
+        refreshMenu()
+        syncDraftsWithMenu()
+        persistRecommendationDrafts()
+        val baseUrl = settingsRepository.getOptionalServerBaseUrl()
+        if (baseUrl.isNullOrBlank()) {
+            message = "Promo dihapus permanen di device ini."
+            return
+        }
+        scope.launch {
+            runCatching {
+                menuSyncRepository.deleteItemFromServer(
+                    baseUrl = baseUrl,
+                    itemId = deletedMenuItemId,
+                    outletId = outletId,
+                )
+                val pulled = menuSyncRepository.pullFromServer(baseUrl, outletId)
+                refreshMenu()
+                syncDraftsWithMenu()
+                persistRecommendationDrafts()
+                "Promo dihapus permanen. Sync server sukses (pull $pulled item)."
+            }.onSuccess { syncMessage ->
+                message = syncMessage
+            }.onFailure { error ->
+                message = "Promo dihapus lokal, tapi hapus server gagal: ${error.message ?: "Unknown error"}"
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -215,13 +334,23 @@ fun RecommendationScreen(
     }
 
     val itemById = remember(menuItems) { menuItems.associateBy { it.id } }
-    val selectableMenuItems = remember(menuItems) {
+    val selectableMenuItems = remember(menuItems, groupNameById) {
         menuItems.filterNot { item ->
-            item.groupId == BUNDLE_GROUP_ID ||
-                item.groupId == PROMO_GROUP_ID ||
-                item.id.startsWith("menu_bundle_") ||
-                item.id.startsWith("menu_promo_")
+            val groupName = item.groupId?.let(groupNameById::get)
+            isBundleMenuItem(item, groupName, emptySet()) ||
+                isPromoMenuItem(item, groupName, emptySet())
         }
+    }
+    val recommendationHighlights = remember(
+        bundles.toList(),
+        promos.toList(),
+        selectableMenuItems,
+    ) {
+        buildRecommendationHighlights(
+            bundles = bundles,
+            promos = promos,
+            menuItems = selectableMenuItems,
+        )
     }
 
     BoxWithConstraints(
@@ -251,6 +380,11 @@ fun RecommendationScreen(
                     )
                 }
             }
+            item {
+                RecommendationHighlightsCard(
+                    recommendations = recommendationHighlights,
+                )
+            }
             if (!message.isNullOrBlank()) {
                 item {
                     AppCard {
@@ -267,6 +401,7 @@ fun RecommendationScreen(
                         bundlePrice = bundlePrice,
                         bundleStartDate = bundleStartDate,
                         bundleEndDate = bundleEndDate,
+                        isEditing = editingBundleId != null,
                         onBundleNameChange = { bundleName = it },
                         onBundlePriceChange = { bundlePrice = normalizeCurrencyInput(it) },
                         onPickBundleStartDate = {
@@ -324,25 +459,30 @@ fun RecommendationScreen(
                                 )
                             }
 
-                            bundles.add(
-                                BundleDraft(
-                                    id = IdGenerator.newId("bundle_"),
-                                    name = name,
-                                    startDate = bundleStartDate.trim(),
-                                    endDate = bundleEndDate.trim(),
-                                    price = price,
-                                    items = bundleItems,
-                                )
+                            val existingBundleId = editingBundleId
+                            val resolvedBundleId = existingBundleId ?: IdGenerator.newId("bundle_")
+                            val draft = BundleDraft(
+                                id = resolvedBundleId,
+                                name = name,
+                                startDate = bundleStartDate.trim(),
+                                endDate = bundleEndDate.trim(),
+                                price = price,
+                                items = bundleItems,
                             )
-                            val savedBundle = bundles.last()
+                            val existingIndex = bundles.indexOfFirst { it.id == resolvedBundleId }
+                            if (existingIndex >= 0) {
+                                bundles[existingIndex] = draft
+                            } else {
+                                bundles.add(draft)
+                            }
                             upsertRecommendationGroup(BUNDLE_GROUP_ID, BUNDLE_GROUP_NAME)
                             menuRepository.upsertItem(
                                 Item(
-                                    id = bundleMenuItemId(savedBundle.id),
-                                    name = savedBundle.name,
-                                    price = savedBundle.price,
+                                    id = bundleMenuItemId(draft.id),
+                                    name = draft.name,
+                                    price = draft.price,
                                     groupId = BUNDLE_GROUP_ID,
-                                    code = "BND-${savedBundle.id.takeLast(6).uppercase()}",
+                                    code = "BND-${draft.id.takeLast(6).uppercase()}",
                                     isActive = true,
                                     outletId = currentOutletId(),
                                 ),
@@ -351,13 +491,15 @@ fun RecommendationScreen(
                             refreshMenu()
                             syncDraftsWithMenu()
                             persistRecommendationDrafts()
-                            bundleName = ""
-                            bundlePrice = ""
-                            bundleStartDate = ""
-                            bundleEndDate = ""
-                            selectedBundleQty.clear()
-                            syncMenuAfterChange("Bundle tersimpan (${bundles.size} total).")
+                            val successPrefix = if (existingBundleId == null) {
+                                "Bundle tersimpan (${bundles.size} total)."
+                            } else {
+                                "Bundle diperbarui."
+                            }
+                            resetBundleEditor()
+                            syncMenuAfterChange(successPrefix)
                         },
+                        onCancelEdit = ::resetBundleEditor,
                     )
                 } else {
                     PromoEditorCard(
@@ -458,17 +600,8 @@ fun RecommendationScreen(
                                 bundles.forEach { bundle ->
                                     RecommendationBundleRow(
                                         bundle = bundle,
-                                        onDelete = {
-                                            bundles.remove(bundle)
-                                            menuRepository.deleteItem(
-                                                itemId = bundleMenuItemId(bundle.id),
-                                                outletId = currentOutletId(),
-                                            )
-                                            refreshMenu()
-                                            syncDraftsWithMenu()
-                                            persistRecommendationDrafts()
-                                            syncMenuAfterChange("Bundle dihapus.")
-                                        },
+                                        onEdit = { startEditBundle(bundle) },
+                                        onDelete = { deleteBundle(bundle) },
                                     )
                                 }
                             }
@@ -484,17 +617,7 @@ fun RecommendationScreen(
                                 promos.forEach { promo ->
                                     RecommendationPromoRow(
                                         promo = promo,
-                                        onDelete = {
-                                            promos.remove(promo)
-                                            menuRepository.deleteItem(
-                                                itemId = promoMenuItemId(promo.id),
-                                                outletId = currentOutletId(),
-                                            )
-                                            refreshMenu()
-                                            syncDraftsWithMenu()
-                                            persistRecommendationDrafts()
-                                            syncMenuAfterChange("Promo dihapus.")
-                                        },
+                                        onDelete = { deletePromo(promo) },
                                     )
                                 }
                             }
@@ -512,17 +635,8 @@ fun RecommendationScreen(
                                 bundles.forEach { bundle ->
                                     RecommendationBundleRow(
                                         bundle = bundle,
-                                        onDelete = {
-                                            bundles.remove(bundle)
-                                            menuRepository.deleteItem(
-                                                itemId = bundleMenuItemId(bundle.id),
-                                                outletId = currentOutletId(),
-                                            )
-                                            refreshMenu()
-                                            syncDraftsWithMenu()
-                                            persistRecommendationDrafts()
-                                            syncMenuAfterChange("Bundle dihapus.")
-                                        },
+                                        onEdit = { startEditBundle(bundle) },
+                                        onDelete = { deleteBundle(bundle) },
                                     )
                                 }
                             }
@@ -537,17 +651,7 @@ fun RecommendationScreen(
                                 promos.forEach { promo ->
                                     RecommendationPromoRow(
                                         promo = promo,
-                                        onDelete = {
-                                            promos.remove(promo)
-                                            menuRepository.deleteItem(
-                                                itemId = promoMenuItemId(promo.id),
-                                                outletId = currentOutletId(),
-                                            )
-                                            refreshMenu()
-                                            syncDraftsWithMenu()
-                                            persistRecommendationDrafts()
-                                            syncMenuAfterChange("Promo dihapus.")
-                                        },
+                                        onDelete = { deletePromo(promo) },
                                     )
                                 }
                             }
@@ -569,6 +673,32 @@ private fun extractBundleId(menuItemId: String): String {
 
 private fun extractPromoId(menuItemId: String): String {
     return menuItemId.removePrefix("menu_promo_").ifBlank { menuItemId }
+}
+
+private fun normalizeNameKey(value: String): String {
+    return value.trim().lowercase().replace(Regex("\\s+"), " ")
+}
+
+private fun isBundleMenuItem(
+    item: Item,
+    groupName: String?,
+    knownBundleNameKeys: Set<String>,
+): Boolean {
+    return item.groupId == BUNDLE_GROUP_ID ||
+        item.id.startsWith("menu_bundle_") ||
+        groupName.equals(BUNDLE_GROUP_NAME, ignoreCase = true) ||
+        normalizeNameKey(item.name) in knownBundleNameKeys
+}
+
+private fun isPromoMenuItem(
+    item: Item,
+    groupName: String?,
+    knownPromoNameKeys: Set<String>,
+): Boolean {
+    return item.groupId == PROMO_GROUP_ID ||
+        item.id.startsWith("menu_promo_") ||
+        groupName.equals(PROMO_GROUP_NAME, ignoreCase = true) ||
+        normalizeNameKey(item.name) in knownPromoNameKeys
 }
 
 private fun encodeBundles(bundles: List<BundleDraft>): String {
@@ -674,6 +804,96 @@ private fun formatCurrencyInput(raw: String): String {
     return formatNumber(digits.toLongOrNull() ?: 0L)
 }
 
+private data class RecommendationHighlight(
+    val badge: String,
+    val title: String,
+    val detail: String,
+)
+
+private fun buildRecommendationHighlights(
+    bundles: List<BundleDraft>,
+    promos: List<PromoDraft>,
+    menuItems: List<Item>,
+): List<RecommendationHighlight> {
+    val fallbackBest = menuItems.maxByOrNull { it.price }
+    val fallbackLowest = menuItems.minByOrNull { it.price }
+
+    val bundleTitle = bundles.firstOrNull()?.name
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "Bundle $it" }
+        ?: run {
+            val first = fallbackBest?.name
+            val second = fallbackLowest?.name
+            when {
+                !first.isNullOrBlank() && !second.isNullOrBlank() && first != second -> "Bundle $first + $second"
+                !first.isNullOrBlank() -> "Bundle $first + item pendamping"
+                else -> "Bundle item terlaris + slow mover"
+            }
+        }
+
+    val promoTarget = promos.firstOrNull()?.itemName
+        ?.takeIf { it.isNotBlank() }
+        ?: fallbackLowest?.name
+        ?: "item slow mover"
+    val upsellTarget = fallbackBest?.name ?: bundles.firstOrNull()?.name ?: "item unggulan"
+
+    return listOf(
+        RecommendationHighlight(
+            badge = "Bundle",
+            title = bundleTitle,
+            detail = "Paketkan item terlaris dengan slow mover untuk dorong penjualan item yang lambat.",
+        ),
+        RecommendationHighlight(
+            badge = "Promo",
+            title = "Promo terbatas untuk $promoTarget",
+            detail = "Jadikan menu sementara 7 hari dengan diskon kecil atau bonus topping agar qty naik.",
+        ),
+        RecommendationHighlight(
+            badge = "Upsell",
+            title = "Jadikan $upsellTarget sebagai add-on utama",
+            detail = "Taruh di urutan atas kasir/QR order untuk menjaga momentum item paling laku.",
+        ),
+    )
+}
+
+@Composable
+private fun RecommendationHighlightsCard(
+    recommendations: List<RecommendationHighlight>,
+) {
+    AppCard {
+        Text(
+            "Rekomendasi Bundle & Promo",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        recommendations.forEach { recommendation ->
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+                shape = MaterialTheme.shapes.medium,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppStatusPill(label = recommendation.badge)
+                    Text(
+                        recommendation.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        recommendation.detail,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun RecommendationTabButton(
     title: String,
@@ -705,6 +925,7 @@ private fun BundleEditorCard(
     bundlePrice: String,
     bundleStartDate: String,
     bundleEndDate: String,
+    isEditing: Boolean,
     onBundleNameChange: (String) -> Unit,
     onBundlePriceChange: (String) -> Unit,
     onPickBundleStartDate: () -> Unit,
@@ -713,6 +934,7 @@ private fun BundleEditorCard(
     onDecreaseQty: (itemId: String) -> Unit,
     onIncreaseQty: (itemId: String) -> Unit,
     onSave: () -> Unit,
+    onCancelEdit: () -> Unit,
 ) {
     val selectedCount = selectedQty.values.count { it > 0 }
     val itemById = remember(menuItems) { menuItems.associateBy { it.id } }
@@ -724,7 +946,10 @@ private fun BundleEditorCard(
     val savings = (baselineTotal - bundlePriceValue).coerceAtLeast(0L)
 
     AppCard {
-        AppSectionHeader("Buat Bundle Produk", "Contoh: Coffee + Snack jadi paket promo yang langsung muncul di kasir")
+        AppSectionHeader(
+            if (isEditing) "Edit Bundle Produk" else "Buat Bundle Produk",
+            "Contoh: Coffee + Snack jadi paket promo yang langsung muncul di kasir",
+        )
         OutlinedTextField(
             value = bundleName,
             onValueChange = onBundleNameChange,
@@ -853,7 +1078,15 @@ private fun BundleEditorCard(
             colors = ButtonDefaults.buttonColors(containerColor = ActionBlue),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Simpan Bundle")
+            Text(if (isEditing) "Update Bundle" else "Simpan Bundle")
+        }
+        if (isEditing) {
+            OutlinedButton(
+                onClick = onCancelEdit,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Batal Edit")
+            }
         }
     }
 }
@@ -1006,6 +1239,7 @@ private fun RecommendationListCard(
 @Composable
 private fun RecommendationBundleRow(
     bundle: BundleDraft,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     AppCard {
@@ -1019,8 +1253,16 @@ private fun RecommendationBundleRow(
             "Items: ${bundle.items.joinToString { "${it.itemName} x${it.qty}" }}",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
-            Text("Hapus Bundle")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+                Text("Edit Bundle")
+            }
+            OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
+                Text("Hapus Bundle")
+            }
         }
     }
 }

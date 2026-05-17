@@ -83,12 +83,24 @@ fun ProductCategoryScreen(
             statusMessage = "Nama kategori wajib diisi."
             return
         }
+        val normalizedName = normalizeCategoryNameKey(name)
+        val duplicate = groups.firstOrNull {
+            it.id != editingId && normalizeCategoryNameKey(it.name) == normalizedName
+        }
+        if (duplicate != null) {
+            statusMessage = "Kategori \"$name\" sudah ada. Pakai nama lain."
+            return
+        }
 
         val existingGroup = groups.firstOrNull { it.id == editingId }
         val nextOrder = (groups.maxOfOrNull { it.order } ?: 0) + 1
+        val resolvedGroupId = editingId ?: IdGenerator.newCategoryId(
+            categoryName = name,
+            existingGroupIds = groups.map { it.id },
+        )
         repo.upsertGroup(
             GroupItem(
-                id = editingId ?: IdGenerator.newId("grp_"),
+                id = resolvedGroupId,
                 name = name,
                 order = existingGroup?.order ?: nextOrder,
                 outletId = currentOutletId(),
@@ -130,6 +142,13 @@ fun ProductCategoryScreen(
         onEdit = ::startEdit,
         onDelete = ::delete,
     )
+}
+
+private fun normalizeCategoryNameKey(name: String): String {
+    return name.trim()
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .replace(Regex("\\s+"), " ")
 }
 
 @Composable

@@ -16,11 +16,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,7 +63,6 @@ fun ModifierGroupScreen(
     var required by remember { mutableStateOf(false) }
     var maxSelectionText by remember { mutableStateOf("1") }
     var optionsDrafts by remember { mutableStateOf(listOf(ModifierOptionDraft())) }
-    var showSelectionTypeMenu by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
 
     fun currentOutletId(): String {
@@ -164,14 +162,10 @@ fun ModifierGroupScreen(
         groupName = groupName,
         onGroupNameChange = { groupName = it },
         selectionType = selectionType,
-        onOpenSelectionTypeMenu = { showSelectionTypeMenu = true },
-        onDismissSelectionTypeMenu = { showSelectionTypeMenu = false },
         onSelectionTypeChange = {
             selectionType = it
-            showSelectionTypeMenu = false
             if (it == "SINGLE") maxSelectionText = "1"
         },
-        showSelectionTypeMenu = showSelectionTypeMenu,
         required = required,
         onRequiredChange = { required = it },
         maxSelectionText = maxSelectionText,
@@ -203,10 +197,7 @@ private fun ModifierGroupContent(
     groupName: String,
     onGroupNameChange: (String) -> Unit,
     selectionType: String,
-    onOpenSelectionTypeMenu: () -> Unit,
-    onDismissSelectionTypeMenu: () -> Unit,
     onSelectionTypeChange: (String) -> Unit,
-    showSelectionTypeMenu: Boolean,
     required: Boolean,
     onRequiredChange: (Boolean) -> Unit,
     maxSelectionText: String,
@@ -247,29 +238,27 @@ private fun ModifierGroupContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     
-                    Box {
-                        Button(
-                            onClick = onOpenSelectionTypeMenu,
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Tipe Pilihan",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color(0xFF475569),
+                        )
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFF333333)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, ModifierBorder),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                when (selectionType) {
-                                    "MULTIPLE" -> "Bisa pilih banyak"
-                                    else -> "Pilih satu"
-                                },
-                            )
-                        }
-                        DropdownMenu(expanded = showSelectionTypeMenu, onDismissRequest = onDismissSelectionTypeMenu) {
-                            DropdownMenuItem(
-                                text = { Text("Pilih satu") },
+                            SelectionTypeChip(
+                                label = "Pilih satu",
+                                selected = selectionType == "SINGLE",
                                 onClick = { onSelectionTypeChange("SINGLE") },
+                                modifier = Modifier.weight(1f),
                             )
-                            DropdownMenuItem(
-                                text = { Text("Bisa pilih banyak") },
+                            SelectionTypeChip(
+                                label = "Bisa pilih banyak",
+                                selected = selectionType == "MULTIPLE",
                                 onClick = { onSelectionTypeChange("MULTIPLE") },
+                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
@@ -403,6 +392,36 @@ private fun ModifierGroupContent(
     }
 }
 
+@Composable
+private fun SelectionTypeChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) ModifierBlue else Color.White,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) ModifierBlue else ModifierBorder,
+        ),
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = label,
+                color = if (selected) Color.White else Color(0xFF334155),
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            )
+        }
+    }
+}
+
 @Preview
 @Composable
 private fun ModifierGroupScreenPreview() {
@@ -422,10 +441,7 @@ private fun ModifierGroupScreenPreview() {
             groupName = "Sugar",
             onGroupNameChange = {},
             selectionType = "SINGLE",
-            onOpenSelectionTypeMenu = {},
-            onDismissSelectionTypeMenu = {},
             onSelectionTypeChange = {},
-            showSelectionTypeMenu = false,
             required = true,
             onRequiredChange = {},
             maxSelectionText = "1",

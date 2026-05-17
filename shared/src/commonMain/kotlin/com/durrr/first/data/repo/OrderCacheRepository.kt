@@ -50,6 +50,13 @@ class OrderCacheRepository(private val db: TokoDatabase) {
         return mapOrders(headers)
     }
 
+    fun getOrderById(
+        orderId: String,
+        outletId: String = SettingsRepository.DEFAULT_OUTLET_ID,
+    ): OrderWithItems? {
+        return getAllOrders(outletId).firstOrNull { it.header.id == orderId }
+    }
+
     private fun mapOrders(headers: List<com.durrr.first.Order_header>): List<OrderWithItems> {
         return headers.map { header ->
             val items = db.tokoQueries.selectOrderItemsByOrder(header.id_order).executeAsList().map { item ->

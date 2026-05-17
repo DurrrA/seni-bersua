@@ -1,6 +1,7 @@
 package com.durrr.first
 
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
@@ -22,6 +23,7 @@ import com.durrr.first.network.dto.AssignProductModifiersRequest
 import com.durrr.first.network.dto.UpsertMenuItemRequest
 import com.durrr.first.network.dto.UpsertModifierGroupRequest
 import com.durrr.first.network.dto.TransactionBatchRequest
+import com.durrr.first.network.security.OpaqueBearerTokenCodec
 import java.io.File
 import java.time.LocalDate
 import kotlinx.serialization.SerializationException
@@ -161,6 +163,7 @@ fun Application.module() {
             }
 
             post("/menu/upsert") {
+                if (!call.requireApiRole("OWNER")) return@post
                 val request = call.receiveApiRequest<UpsertMenuItemRequest>()
                 val updated = ServerDatabase.upsertMenu(request)
                 if (updated == null) {
@@ -175,6 +178,7 @@ fun Application.module() {
             }
 
             post("/menu/{id}/delete") {
+                if (!call.requireApiRole("OWNER")) return@post
                 val id = call.parameters["id"].orEmpty()
                 val outletId = call.request.queryParameters["outlet"].orEmpty().ifBlank { "default" }
                 if (id.isBlank()) {
@@ -198,6 +202,7 @@ fun Application.module() {
             }
 
             post("/menu/modifiers/upsert") {
+                if (!call.requireApiRole("OWNER")) return@post
                 val request = call.receiveApiRequest<UpsertModifierGroupRequest>()
                 val ok = ServerDatabase.upsertModifierGroup(request)
                 if (!ok) {
@@ -212,6 +217,7 @@ fun Application.module() {
             }
 
             post("/menu/{id}/modifiers/assign") {
+                if (!call.requireApiRole("OWNER")) return@post
                 val itemId = call.parameters["id"].orEmpty()
                 val request = call.receiveApiRequest<AssignProductModifiersRequest>()
                 if (itemId.isBlank()) {
@@ -239,6 +245,7 @@ fun Application.module() {
             }
 
             post("/customers/seed-tables") {
+                if (!call.requireApiRole("OWNER")) return@post
                 val request = call.receiveApiRequest<SeedTablesRequest>()
                 val seeded = ServerDatabase.seedTableCustomers(
                     count = request.count,
@@ -255,6 +262,7 @@ fun Application.module() {
             }
 
             post("/tables/seed") {
+                if (!call.requireApiRole("OWNER")) return@post
                 val request = call.receiveApiRequest<SeedTablesRequest>()
                 val seeded = ServerDatabase.seedTableCustomers(
                     count = request.count,
@@ -327,6 +335,7 @@ fun Application.module() {
             }
 
             post("/orders/{id}/status") {
+                if (!call.requireApiRole("OWNER", "CASHIER")) return@post
                 val orderId = call.parameters["id"].orEmpty()
                 val body = call.receiveApiRequest<UpdateOrderStatusRequest>()
                 val updated = ServerDatabase.updateOrderStatus(
@@ -346,6 +355,7 @@ fun Application.module() {
             }
 
             post("/orders/{id}/accept") {
+                if (!call.requireApiRole("OWNER", "CASHIER")) return@post
                 val orderId = call.parameters["id"].orEmpty()
                 val updated = ServerDatabase.updateOrderStatus(orderId, "ACCEPTED", "default")
                 if (updated == null) {
@@ -360,6 +370,7 @@ fun Application.module() {
             }
 
             post("/sync/transactions/batch") {
+                if (!call.requireApiRole("OWNER", "CASHIER")) return@post
                 val request = call.receiveApiRequest<TransactionBatchRequest>()
                 call.respondApiSuccess(
                     data = ServerDatabase.syncTransactionsBatch(request),
@@ -403,6 +414,7 @@ fun Application.module() {
             }
 
             post("/admin/reset-all") {
+                if (!call.requireApiRole("OWNER")) return@post
                 val outletId = call.request.queryParameters["outlet"].orEmpty().ifBlank { "default" }
                 val ok = ServerDatabase.resetOutletData(outletId)
                 if (ok) {
@@ -477,6 +489,7 @@ private val apiJsonParser = Json {
     ignoreUnknownKeys = true
     isLenient = true
 }
+private const val AUTH_BEARER_PREFIX = "Bearer "
 
 @Serializable
 data class SeedTablesRequest(
@@ -533,6 +546,74 @@ private suspend inline fun <reified T> ApplicationCall.receiveApiRequest(): T {
         throw IllegalArgumentException("Request envelope error must be null")
     }
     return payload
+}
+
+private suspend fun ApplicationCall.requireApiRole(vararg allowedRoles: String): Boolean {
+    val allowed = allowedRoles.map { it.uppercase() }.toSet()
+    val sharedSecret = configuredApiSharedSecret()
+    if (sharedSecret == null) {
+        if (request.isAllowedRootAccess()) return true
+        respondApiError(
+            status = HttpStatusCode.Unauthorized,
+            message = "Unauthorized request",
+            error = "Server API shared secret is not configured",
+        )
+        return false
+    }
+
+    val authHeader = request.headers[HttpHeaders.Authorization]
+        ?.trim()
+        .orEmpty()
+    if (!authHeader.startsWith(AUTH_BEARER_PREFIX, ignoreCase = true)) {
+        respondApiError(
+            status = HttpStatusCode.Unauthorized,
+            message = "Unauthorized request",
+            error = "Missing Authorization Bearer token",
+        )
+        return false
+    }
+
+    val token = authHeader.substringAfter(' ', missingDelimiterValue = "")
+        .trim()
+    if (token.isBlank()) {
+        respondApiError(
+            status = HttpStatusCode.Unauthorized,
+            message = "Unauthorized request",
+            error = "Empty bearer token",
+        )
+        return false
+    }
+
+    val claims = OpaqueBearerTokenCodec.decode(
+        secret = sharedSecret,
+        token = token,
+    )
+    if (claims == null) {
+        respondApiError(
+            status = HttpStatusCode.Unauthorized,
+            message = "Unauthorized request",
+            error = "Invalid bearer token or shared secret mismatch",
+        )
+        return false
+    }
+    val providedRole = claims.role.uppercase()
+
+    if (providedRole !in allowed) {
+        respondApiError(
+            status = HttpStatusCode.Forbidden,
+            message = "Forbidden request",
+            error = "Role $providedRole cannot access this endpoint",
+        )
+        return false
+    }
+    return true
+}
+
+private fun configuredApiSharedSecret(): String? {
+    return EnvConfig.get("SUCASH_API_SHARED_SECRET", "")
+        .orEmpty()
+        .trim()
+        .ifBlank { null }
 }
 
 private fun io.ktor.server.request.ApplicationRequest.extractUuidSubdomain(): String? {
